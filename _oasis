@@ -1,0 +1,38 @@
+AlphaFeatures:          ocamlbuild_more_args
+Authors:                Xavier Guérin
+BetaFeatures:           section_object
+BuildTools:             ocamlbuild
+Description:            PPX plugin for the OCAML OPAM hardcaml package.
+FilesAB:                META.ab
+FindlibVersion:         >= 1.3.2
+Homepage:               https://github.com/xguerin/ppx_hardcaml
+License:                ISC
+Name:                   ppx_hardcaml
+OASISFormat:            0.4
+OCamlVersion:           >= 4.03
+Plugins:                DevFiles (0.4)
+Synopsis:               PPX plugin for the OCAML OPAM hardcaml package.
+Version:                1.3.2
+XOCamlbuildPluginTags:  package(ppx_driver.ocamlbuild), package(js-build-tools.ocamlbuild_goodies)
+
+SourceRepository github
+  Type:     git
+  Location: https://github.com/xguerin/ppx_hardcaml.git
+
+Library ppx_hardcaml
+  Path:         src/
+  Pack:         false
+  Modules:      Ppx_hardcaml
+  BuildDepends: compiler-libs.common,
+                ppx_tools,
+                ppx_tools.metaquot,
+                ppx_core,
+                ppx_driver
+
+Executable ppx
+  Path:           as_ppx
+  MainIs:         ppx.ml
+  CompiledObject: best
+  BuildDepends:   ppx_hardcaml,
+                  ppx_driver
+
