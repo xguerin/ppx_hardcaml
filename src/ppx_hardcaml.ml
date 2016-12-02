@@ -29,12 +29,47 @@ let location_exn ~loc msg =
   |> raise
 ;;
 
+(* Binary operators conversion *)
+
+let to_hw_ident_lident ~loc = function
+  (* Bitwise *)
+  | "lor"  -> { txt = Lident("|:" ); loc } 
+  | "land" -> { txt = Lident("&:" ); loc } 
+  | "lxor" -> { txt = Lident("^:" ); loc } 
+  | "lnot" -> { txt = Lident("~:" ); loc } 
+  (* Arithmetic *)
+  | "+"    -> { txt = Lident("+:" ); loc } 
+  | "-"    -> { txt = Lident("-:" ); loc } 
+  | "*"    -> { txt = Lident("*:" ); loc } 
+  (* Comparison *)
+  | "<"    -> { txt = Lident("<:" ); loc } 
+  | "<="   -> { txt = Lident("<=:"); loc } 
+  | ">"    -> { txt = Lident(">:" ); loc } 
+  | ">="   -> { txt = Lident(">=:"); loc } 
+  | "=="   -> { txt = Lident("==:"); loc } 
+  | "<>"   -> { txt = Lident("<>:"); loc } 
+  | strn   -> { txt = Lident(strn ); loc } 
+
+let to_hw_ident ~loc = function
+  | { txt = Lident(strn); loc } -> to_hw_ident_lident ~loc strn
+  | _ -> location_exn ~loc "Invalid use of HardCaml PPX extension"
+
+(* Scenarios *)
+
+let do_apply ~loc = function
+  | { pexp_desc = Pexp_ident(ident); pexp_loc; pexp_attributes } ->
+    let hw_ident = to_hw_ident ~loc ident in
+    { pexp_desc = Pexp_ident(hw_ident); pexp_loc; pexp_attributes }
+  | _ -> location_exn ~loc "Invalid use of HardCaml PPX extension"
+
 (* Mapper *)
 
 open Ppx_core.Std
 
 let mapper ~loc ~path:_ { pexp_desc; pexp_loc; pexp_attributes } =
   match pexp_desc with
+  | Pexp_apply(label, ops) ->
+    { pexp_desc = Pexp_apply(do_apply ~loc label, ops); pexp_loc; pexp_attributes }
   | _ -> location_exn ~loc "Invalid use of HardCaml PPX extension"
 
 let extension =
