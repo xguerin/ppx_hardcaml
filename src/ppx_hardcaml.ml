@@ -64,52 +64,37 @@ let to_hw_ident ~loc = function
 
 (* Scenarios *)
 
-let rec do_apply ~loc { pexp_desc; pexp_loc; pexp_attributes } = 
-  match pexp_desc with
+let rec do_apply ~loc expr = 
+  match expr.pexp_desc with
   (* Process binary operators *)
-  | Pexp_apply({ pexp_desc = Pexp_ident({ txt = Lident(strn); loc });
-                 pexp_loc;
-                 pexp_attributes }, ops) ->
-    let hw_ops   = List.map (fun (l, e) -> (l, do_apply ~loc e)) ops in
-    let hw_ident = to_hw_ident ~loc strn in
-    let hw_label = { pexp_desc = Pexp_ident(hw_ident); pexp_loc; pexp_attributes } in
-    { pexp_desc = Pexp_apply(hw_label, hw_ops);
-      pexp_loc;
-      pexp_attributes }
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Lident(strn); loc }) } as label,
+      ops
+    ) ->
+    let hw_ops   = List.map (fun (l, e) -> (l, do_apply ~loc e)) ops
+    and hw_ident = to_hw_ident ~loc strn in
+    let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
+    { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
   (* Process valid signal index operator *)
-  | Pexp_apply({ pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc });
-                 pexp_loc;
-                 pexp_attributes },
-               [ _;
-                 (_, { pexp_desc = Pexp_tuple ([
-                      { pexp_desc = Pexp_constant(Pconst_integer(v0, t0));
-                        pexp_loc = v0_loc;
-                        pexp_attributes = v0_attrs };
-                      { pexp_desc = Pexp_constant(Pconst_integer(v1, t1));
-                        pexp_loc = v1_loc;
-                        pexp_attributes = v1_attrs }
-                    ])})
-               ]) ->
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
+      [ _; (_, { pexp_desc = Pexp_tuple ([
+            { pexp_desc = Pexp_constant(Pconst_integer(v0, _)) } as hw_v0int;
+            { pexp_desc = Pexp_constant(Pconst_integer(v1, _)) } as hw_v1int
+          ])})
+      ]) ->
     let hw_ident = { txt = Lident("select"); loc } in
-    let hw_label = { pexp_desc = Pexp_ident(hw_ident);
-                     pexp_loc;
-                     pexp_attributes }
-    and hw_v0int = { pexp_desc = Pexp_constant(Pconst_integer(v0, t0));
-                     pexp_loc = v0_loc;
-                     pexp_attributes = v0_attrs }
-    and hw_v1int = { pexp_desc = Pexp_constant(Pconst_integer(v1, t1));
-                     pexp_loc = v1_loc;
-                     pexp_attributes = v1_attrs } in
+    let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
     let hw_ops   = [ (Nolabel, hw_v0int); (Nolabel, hw_v1int) ] in
-    { pexp_desc = Pexp_apply(hw_label, hw_ops);
-      pexp_loc;
-      pexp_attributes }
+    { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
   (* Process invalid signal index operator *)
-  | Pexp_apply({ pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) },
-               _ ) ->
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) },
+      _
+    ) ->
     location_exn ~loc "Invalid signal subscript format"
   (* Pass through other operations *)
-  | _ -> { pexp_desc; pexp_loc; pexp_attributes }
+  | _ -> expr
 
 let do_let ~loc bindings =
   List.map (wrap_let_binding ~loc) bindings
