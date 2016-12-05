@@ -43,7 +43,7 @@ let wrap_let_binding ~loc { pvb_pat; pvb_expr; pvb_loc; pvb_attributes } =
 
 (* Binary operators conversion *)
 
-let to_hw_ident_lident ~loc = function
+let to_hw_ident ~loc = function
   (* Bitwise *)
   | "lor"  -> { txt = Lident("|:" ); loc } 
   | "land" -> { txt = Lident("&:" ); loc } 
@@ -62,20 +62,53 @@ let to_hw_ident_lident ~loc = function
   | "<>"   -> { txt = Lident("<>:"); loc } 
   | strn   -> { txt = Lident(strn ); loc } 
 
-let to_hw_ident ~loc = function
-  | { txt = Lident(strn); loc } -> to_hw_ident_lident ~loc strn
-  | { txt = Ldot(Lident("String"), "get"); loc } -> { txt = Lident("select"); loc }
-  | _ -> location_exn ~loc "Invalid use of HardCaml PPX extension"
-
 (* Scenarios *)
 
 let rec do_apply ~loc { pexp_desc; pexp_loc; pexp_attributes } = 
   match pexp_desc with
-  | Pexp_apply({ pexp_desc = Pexp_ident(ident); pexp_loc; pexp_attributes }, ops) ->
+  (* Process binary operators *)
+  | Pexp_apply({ pexp_desc = Pexp_ident({ txt = Lident(strn); loc });
+                 pexp_loc;
+                 pexp_attributes }, ops) ->
     let hw_ops   = List.map (fun (l, e) -> (l, do_apply ~loc e)) ops in
-    let hw_ident = to_hw_ident ~loc ident in
+    let hw_ident = to_hw_ident ~loc strn in
     let hw_label = { pexp_desc = Pexp_ident(hw_ident); pexp_loc; pexp_attributes } in
-    { pexp_desc = Pexp_apply(hw_label, hw_ops); pexp_loc; pexp_attributes }
+    { pexp_desc = Pexp_apply(hw_label, hw_ops);
+      pexp_loc;
+      pexp_attributes }
+  (* Process valid signal index operator *)
+  | Pexp_apply({ pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc });
+                 pexp_loc;
+                 pexp_attributes },
+               [ _;
+                 (_, { pexp_desc = Pexp_tuple ([
+                      { pexp_desc = Pexp_constant(Pconst_integer(v0, t0));
+                        pexp_loc = v0_loc;
+                        pexp_attributes = v0_attrs };
+                      { pexp_desc = Pexp_constant(Pconst_integer(v1, t1));
+                        pexp_loc = v1_loc;
+                        pexp_attributes = v1_attrs }
+                    ])})
+               ]) ->
+    let hw_ident = { txt = Lident("select"); loc } in
+    let hw_label = { pexp_desc = Pexp_ident(hw_ident);
+                     pexp_loc;
+                     pexp_attributes }
+    and hw_v0int = { pexp_desc = Pexp_constant(Pconst_integer(v0, t0));
+                     pexp_loc = v0_loc;
+                     pexp_attributes = v0_attrs }
+    and hw_v1int = { pexp_desc = Pexp_constant(Pconst_integer(v1, t1));
+                     pexp_loc = v1_loc;
+                     pexp_attributes = v1_attrs } in
+    let hw_ops   = [ (Nolabel, hw_v0int); (Nolabel, hw_v1int) ] in
+    { pexp_desc = Pexp_apply(hw_label, hw_ops);
+      pexp_loc;
+      pexp_attributes }
+  (* Process invalid signal index operator *)
+  | Pexp_apply({ pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) },
+               _ ) ->
+    location_exn ~loc "Invalid signal subscript format"
+  (* Pass through other operations *)
   | _ -> { pexp_desc; pexp_loc; pexp_attributes }
 
 let do_let ~loc bindings =
@@ -86,7 +119,6 @@ let do_let ~loc bindings =
 open Ppx_core.Std
 
 let mapper ~loc ~path:_ { pexp_desc; pexp_loc; pexp_attributes } =
-  printf "%s\n" (Pprintast.string_of_expression { pexp_desc; pexp_loc; pexp_attributes });
   match pexp_desc with
   | Pexp_apply(_, _) ->
     do_apply ~loc { pexp_desc; pexp_loc; pexp_attributes }
