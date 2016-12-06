@@ -60,6 +60,9 @@ let to_hw_ident ~loc = function
   | ">="   -> { txt = Lident(">=:"); loc } 
   | "=="   -> { txt = Lident("==:"); loc } 
   | "<>"   -> { txt = Lident("<>:"); loc } 
+  (* Concatenation *)
+  | "@"    -> { txt = Lident("@:"); loc } 
+  (* Default *)
   | strn   -> { txt = Lident(strn ); loc } 
 
 (* Scenarios *)
@@ -99,11 +102,11 @@ let rec do_apply ~loc expr =
 let do_let ~loc bindings =
   List.map (wrap_let_binding ~loc) bindings
 
-(* Mapper *)
+(* Expression mapper *)
 
 open Ppx_core.Std
 
-let mapper ~loc ~path:_ { pexp_desc; pexp_loc; pexp_attributes } =
+let expr_mapper ~loc ~path:_ { pexp_desc; pexp_loc; pexp_attributes } =
   match pexp_desc with
   | Pexp_apply(_, _) ->
     do_apply ~loc { pexp_desc; pexp_loc; pexp_attributes }
@@ -117,8 +120,10 @@ let expr_extension =
     "hw"
     Extension.Context.expression
     Ast_pattern.(single_expr_payload __)
-    mapper
+    expr_mapper
 ;;
+
+(* Driver registration *)
 
 let () =
   Ppx_driver.register_transformation "hw" ~extensions:[expr_extension]
