@@ -31,15 +31,15 @@ let location_exn ~loc msg =
 
 (* Wrappers *)
 
-let wrap_expr ~loc { pexp_desc; pexp_loc; pexp_attributes } =
+let wrap_expr ~loc ({ pexp_desc; pexp_loc; pexp_attributes } as expr) =
   let ext = Location.mkloc "hw" loc in
   let evl = Pstr_eval({ pexp_desc; pexp_loc; pexp_attributes }, pexp_attributes) in 
   let str = PStr([{ pstr_desc = evl ; pstr_loc = pexp_loc }])
   in
-  { pexp_desc = Pexp_extension(ext, str); pexp_loc; pexp_attributes }
+  { expr with pexp_desc = Pexp_extension(ext, str) }
 
-let wrap_let_binding ~loc { pvb_pat; pvb_expr; pvb_loc; pvb_attributes } =
-  { pvb_pat; pvb_expr = wrap_expr ~loc pvb_expr; pvb_loc; pvb_attributes }
+let wrap_let_binding ~loc ({ pvb_pat; pvb_expr; pvb_loc; pvb_attributes } as binding) =
+  { binding with pvb_expr = wrap_expr ~loc pvb_expr }
 
 (* Binary operators conversion *)
 
@@ -106,13 +106,13 @@ let do_let ~loc bindings =
 
 open Ppx_core.Std
 
-let expr_mapper ~loc ~path:_ { pexp_desc; pexp_loc; pexp_attributes } =
+let expr_mapper ~loc ~path:_ ({ pexp_desc; pexp_loc; pexp_attributes } as expr) =
   match pexp_desc with
   | Pexp_apply(_, _) ->
-    do_apply ~loc { pexp_desc; pexp_loc; pexp_attributes }
+    do_apply ~loc expr
   | Pexp_let(Nonrecursive, bindings, next) ->
     let wb = do_let ~loc bindings in
-    { pexp_desc = Pexp_let(Nonrecursive, wb, next) ; pexp_loc; pexp_attributes }
+    { expr with pexp_desc = Pexp_let(Nonrecursive, wb, next) }
   | _ -> location_exn ~loc "Invalid use of HardCaml PPX extension"
 
 let expr_extension =
