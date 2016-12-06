@@ -1,0 +1,57 @@
+#+TITLE: PPX rewriter for HardCaml
+#+AUTHOR: Xavier Guerin
+
+This module provides a `PPX` rewriter for some of [HardCaml](https://github.com/ujamjar/hardcaml)'s specific syntax:
+
+- Enable the use of pervasive operator names to manipulate signals
+- Reuse the 2D string indexing syntax for signal indexing
+
+## Examples
+
+```ocaml
+let some_function a b = 
+let some_signal = 
+
+* Examples
+
+** Operators
+
+#+NAME: Original syntax
+#+BEGIN_SRC ocaml
+let some_function a b =
+  a &: b
+#+END_SRC
+
+#+NAME: Using the PPX rewriter
+#+BEGIN_SRC ocaml
+let some_function a b =
+  [%hw a land b]
+#+END_SRC
+
+#+NAME: Using the let% extension of the PPX rewriter
+#+BEGIN_SRC ocaml
+let some_function a b =
+  let%hw result = a land b in
+  result
+#+END_SRC
+
+** Indexing
+
+#+NAME: Original syntax
+#+BEGIN_SRC ocaml
+let some_function a =
+  a.[7:0]
+#+END_SRC
+
+#+NAME: Using the PPX rewriter
+#+BEGIN_SRC ocaml
+let some_function a =
+  [%hw a.[7,0]]
+#+END_SRC
+
+#+NAME: Using the let% extension of the PPX rewriter
+#+BEGIN_SRC ocaml
+let some_function a =
+  let%hw result = a.[7,0] in
+  result
+#+END_SRC
