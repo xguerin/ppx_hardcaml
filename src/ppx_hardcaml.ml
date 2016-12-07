@@ -81,14 +81,15 @@ let rec do_apply ~loc expr =
   (* Process valid signal index operator *)
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
-      [ _; (_, { pexp_desc = Pexp_tuple ([
+      [ var_tuple;
+        (_, { pexp_desc = Pexp_tuple ([
             { pexp_desc = Pexp_constant(Pconst_integer(v0, _)) } as hw_v0int;
             { pexp_desc = Pexp_constant(Pconst_integer(v1, _)) } as hw_v1int
           ])})
       ]) ->
     let hw_ident = { txt = Lident("select"); loc } in
     let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
-    let hw_ops   = [ (Nolabel, hw_v0int); (Nolabel, hw_v1int) ] in
+    let hw_ops   = [ var_tuple; (Nolabel, hw_v0int); (Nolabel, hw_v1int) ] in
     { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
   (* Process invalid signal index operator *)
   | Pexp_apply(
