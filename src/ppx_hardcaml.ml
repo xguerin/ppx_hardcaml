@@ -78,6 +78,16 @@ let rec do_apply ~loc expr =
     and hw_ident = to_hw_ident ~loc strn in
     let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
     { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
+  (* Process valid signal single bit operator *)
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
+      [ var_tuple;
+        (_, ({ pexp_desc = Pexp_constant(Pconst_integer(v0, _)) } as hw_bit))
+      ]) ->
+    let hw_ident = { txt = Lident("bit"); loc } in
+    let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
+    let hw_ops   = [ var_tuple; (Nolabel, hw_bit) ] in
+    { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
   (* Process valid signal index operator *)
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
