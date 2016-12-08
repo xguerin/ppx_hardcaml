@@ -55,3 +55,8 @@ let some_function a =
   let%hw result = a.[7,0] in
   result
 #+END_SRC
+
+* Implementation details
+
+- The ~[%hw]~ extension is recursively applied to function calls, tuples, and lists
+- When using the ~let%hw~ syntax, the extension is *NOT* applied to the expression past the ~in~ keyword
