@@ -14,5 +14,6 @@ temp
 *.mllib
 *.mldylib
 *Test
+setup.exe
 setup.data
 META
