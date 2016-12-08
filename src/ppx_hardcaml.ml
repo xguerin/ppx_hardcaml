@@ -74,7 +74,7 @@ let rec do_apply ~loc expr =
       { pexp_desc = Pexp_ident({ txt = Lident(strn); loc }) } as label,
       ops
     ) ->
-    let hw_ops   = List.map (fun (l, e) -> (l, do_apply ~loc e)) ops
+    let hw_ops   = List.map (fun (l, e) -> (l, wrap_expr ~loc e)) ops
     and hw_ident = to_hw_ident ~loc strn in
     let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
     { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
@@ -97,8 +97,8 @@ let rec do_apply ~loc expr =
       _
     ) ->
     location_exn ~loc "Invalid signal subscript format"
-  (* Pass through other operations *)
-  | _ -> expr
+  | _ ->
+    location_exn ~loc "[%hw] unsupported expression"
 
 let do_let ~loc bindings =
   List.map (wrap_let_binding ~loc) bindings
@@ -114,7 +114,11 @@ let expr_mapper ~loc ~path:_ ({ pexp_desc; pexp_loc; pexp_attributes } as expr) 
   | Pexp_let(Nonrecursive, bindings, next) ->
     let wb = do_let ~loc bindings in
     { expr with pexp_desc = Pexp_let(Nonrecursive, wb, next) }
-  | _ -> location_exn ~loc "Invalid use of HardCaml PPX extension"
+  | Pexp_construct (({ txt = Lident ("::"); loc } as ident), Some (nexpr)) -> 
+    { expr with pexp_desc = Pexp_construct (ident, Some (wrap_expr ~loc nexpr)) }
+  | Pexp_tuple (lexprs) ->
+    { expr with pexp_desc = Pexp_tuple (List.map (fun e -> wrap_expr ~loc:pexp_loc e) lexprs) }
+  | _ -> expr
 
 let expr_extension =
   Extension.V2.declare
