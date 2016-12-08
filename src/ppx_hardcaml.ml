@@ -67,6 +67,18 @@ let to_hw_ident ~loc = function
 
 (* Scenarios *)
 
+let mksinglebit ~loc expr label var bit =
+  let hw_ident = { txt = Lident("bit"); loc } in
+  let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
+  let hw_ops   = [ var; (Nolabel, bit) ] in
+  { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
+
+let mkbitrange ~loc expr label var v0 v1 =
+  let hw_ident = { txt = Lident("select"); loc } in
+  let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
+  let hw_ops   = [ var; (Nolabel, v0); (Nolabel, v1) ] in
+  { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
+
 let rec do_apply ~loc expr = 
   match expr.pexp_desc with
   (* Process binary operators *)
@@ -82,25 +94,48 @@ let rec do_apply ~loc expr =
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
       [ var_tuple;
-        (_, ({ pexp_desc = Pexp_constant(Pconst_integer(v0, _)) } as hw_bit))
+        (_, ({ pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_bit))
+      ])
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
+      [ var_tuple;
+        (_, ({ pexp_desc = Pexp_ident(_) } as hw_bit))
       ]) ->
-    let hw_ident = { txt = Lident("bit"); loc } in
-    let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
-    let hw_ops   = [ var_tuple; (Nolabel, hw_bit) ] in
-    { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
+    mksinglebit ~loc expr label var_tuple hw_bit
   (* Process valid signal index operator *)
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
       [ var_tuple;
         (_, { pexp_desc = Pexp_tuple ([
-            { pexp_desc = Pexp_constant(Pconst_integer(v0, _)) } as hw_v0int;
-            { pexp_desc = Pexp_constant(Pconst_integer(v1, _)) } as hw_v1int
+            { pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_v0int;
+            { pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_v1int
+          ])})
+      ])
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
+      [ var_tuple;
+        (_, { pexp_desc = Pexp_tuple ([
+            { pexp_desc = Pexp_ident(_) } as hw_v0int;
+            { pexp_desc = Pexp_ident(_) } as hw_v1int
+          ])})
+      ])
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
+      [ var_tuple;
+        (_, { pexp_desc = Pexp_tuple ([
+            { pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_v0int;
+            { pexp_desc = Pexp_ident(_) } as hw_v1int
+          ])})
+      ])
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
+      [ var_tuple;
+        (_, { pexp_desc = Pexp_tuple ([
+            { pexp_desc = Pexp_ident(_) } as hw_v0int;
+            { pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_v1int
           ])})
       ]) ->
-    let hw_ident = { txt = Lident("select"); loc } in
-    let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
-    let hw_ops   = [ var_tuple; (Nolabel, hw_v0int); (Nolabel, hw_v1int) ] in
-    { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
+    mkbitrange ~loc expr label var_tuple hw_v0int hw_v1int
   (* Process invalid signal index operator *)
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) },
