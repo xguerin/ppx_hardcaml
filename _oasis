@@ -36,3 +36,19 @@ Executable ppx
   BuildDepends:   ppx_hardcaml,
                   ppx_driver
 
+Executable ppx_hardcaml_test
+  Path:           tests
+  MainIs:         PpxHardcamlTest.ml
+  CompiledObject: best
+  ByteOpt:        -ppx ../_build/as_ppx/ppx.native
+  NativeOpt:      -ppx ../_build/as_ppx/ppx.native
+  Install:        false
+  Build$:         flag(tests)
+  BuildDepends:   hardcaml,
+                  oUnit
+
+Test ppx_hardcaml_test
+  TestTools:        ppx_hardcaml_test
+  Command:          $ppx_hardcaml_test
+  Run$:             flag(tests)
+  WorkingDirectory: tests

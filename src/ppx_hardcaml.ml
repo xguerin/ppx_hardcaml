@@ -22,6 +22,14 @@ open Longident
 open Parsetree
 open Printf
 
+(* Helpers *)
+
+let mksym =
+  let i = ref 1000 in
+  fun () ->
+    incr i; let i = !i in
+    sprintf "__ppx_hardcaml_%d" i
+
 (* Exception *)
 
 let location_exn ~loc msg =
@@ -43,29 +51,72 @@ let wrap_let_binding ~loc ({ pvb_pat; pvb_expr; pvb_loc; pvb_attributes } as bin
 
 (* Binary operators conversion *)
 
-let to_hw_ident ~loc = function
-  (* Bitwise *)
-  | "lor"  -> { txt = Lident("|:" ); loc } 
-  | "land" -> { txt = Lident("&:" ); loc } 
-  | "lxor" -> { txt = Lident("^:" ); loc } 
-  | "lnot" -> { txt = Lident("~:" ); loc } 
-  (* Arithmetic *)
-  | "+"    -> { txt = Lident("+:" ); loc } 
-  | "-"    -> { txt = Lident("-:" ); loc } 
-  | "*"    -> { txt = Lident("*:" ); loc } 
-  (* Comparison *)
-  | "<"    -> { txt = Lident("<:" ); loc } 
-  | "<="   -> { txt = Lident("<=:"); loc } 
-  | ">"    -> { txt = Lident(">:" ); loc } 
-  | ">="   -> { txt = Lident(">=:"); loc } 
-  | "=="   -> { txt = Lident("==:"); loc } 
-  | "<>"   -> { txt = Lident("<>:"); loc } 
-  (* Concatenation *)
-  | "@"    -> { txt = Lident("@:"); loc } 
-  (* Default *)
-  | strn   -> { txt = Lident(strn ); loc } 
+type binop_t =
+  | LeftIsConstInt
+  | RightIsSignal
+  | RightIsConstInt
+
+let binop_decorate ~typ v =
+  match typ with
+  | LeftIsConstInt
+  | RightIsSignal -> v
+  | RightIsConstInt -> v ^ "."
+
+let hw_binop = [ ("lor" , "|:" )
+               ; ("land", "&:" )
+               ; ("lxor", "^:" )
+               ; ("lnot", "~:" )
+               ; ("+"   , "+:" )
+               ; ("-"   , "-:" )
+               ; ("*"   , "*:" )
+               ; ("<"   , "<:" )
+               ; ("<="  , "<=:")
+               ; (">"   , ">:" )
+               ; (">="  , ">=:")
+               ; ("=="  , "==:")
+               ; ("<>"  , "<>:")
+               ; ("@"   , "@:" ) ]
+
+let is_hw_binop op = List.mem_assoc op hw_binop
+
+let to_hw_ident ~loc ~typ op =
+  let hw_op = try List.assoc op hw_binop |> binop_decorate ~typ with
+    | Not_found -> op
+  in
+  { txt = Lident(hw_op); loc } 
 
 (* Scenarios *)
+
+let mkbinopexpr ~loc ~typ expr label strn op0 op1 =
+  let hw_ident = to_hw_ident ~loc ~typ strn in
+  let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
+  { expr with pexp_desc = Pexp_apply(hw_label, [ (Nolabel, op0); (Nolabel, op1) ]) }
+
+let mkbinop ~loc expr label strn op0 op1 = 
+  match op0.pexp_desc, op1.pexp_desc with
+  (* 0 + 0 -> ?? *)
+  | Pexp_constant(Pconst_integer(_, _)), Pexp_constant(Pconst_integer(_, _)) ->
+    location_exn ~loc "Hardware binary operation requires a signal"
+  (* sig + 0 -> sig +:. 0 *)
+  | _, Pexp_constant(Pconst_integer(_, _)) ->
+    mkbinopexpr ~loc ~typ:RightIsConstInt expr label strn op0 op1
+  (* 0 + sig -> ((fun sig -> consti (width sig) 0 +: sig) sig *)
+  | Pexp_constant(Pconst_integer(_, _)), _ ->
+    let wop0 = [%expr (consti (width [%e op1]) [%e op0])] in
+    let tsym = mksym () in
+    let esym = evar ~loc tsym in
+    let psym = pvar ~loc tsym in
+    let wbop = mkbinopexpr ~loc ~typ:LeftIsConstInt expr label strn wop0 esym in
+    [%expr ((fun [%p psym] -> [%e wbop]) [%e op1])]
+  (* sig + sig -> sig +: sig *)
+  | _ ->
+    mkbinopexpr ~loc ~typ:RightIsSignal expr label strn op0 op1
+
+let mkfncall ~loc expr label strn ops = 
+  let hw_ops   = List.map (fun (l, e) -> (l, wrap_expr ~loc e)) ops
+  and hw_ident = to_hw_ident ~loc ~typ:RightIsSignal strn in
+  let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
+  { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
 
 let mksinglebit ~loc expr label var bit =
   let hw_ident = { txt = Lident("bit"); loc } in
@@ -84,12 +135,15 @@ let rec do_apply ~loc expr =
   (* Process binary operators *)
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Lident(strn); loc }) } as label,
+      [ (_, op0); (_ , op1) ]
+    ) when is_hw_binop strn ->
+    mkbinop ~loc expr label strn op0 op1
+  (* Process function calls *)
+  | Pexp_apply(
+      { pexp_desc = Pexp_ident({ txt = Lident(strn); loc }) } as label,
       ops
     ) ->
-    let hw_ops   = List.map (fun (l, e) -> (l, wrap_expr ~loc e)) ops
-    and hw_ident = to_hw_ident ~loc strn in
-    let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
-    { expr with pexp_desc = Pexp_apply(hw_label, hw_ops) }
+    mkfncall ~loc expr label strn ops
   (* Process valid signal single bit operator *)
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,

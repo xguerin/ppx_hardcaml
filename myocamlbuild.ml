@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 31c143fed881676189dc966fbb422da8) *)
+(* DO NOT EDIT (digest: 3a52ec967e09a8064d194b32626385a5) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -887,7 +887,65 @@ let package_default =
   {
      MyOCamlbuildBase.lib_ocaml = [("ppx_hardcaml", ["src"], [])];
      lib_c = [];
-     flags = [];
+     flags =
+       [
+          (["oasis_executable_ppx_hardcaml_test_byte"; "ocaml"; "link"; "byte"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "../_build/as_ppx/ppx.native"])
+            ]);
+          ([
+              "oasis_executable_ppx_hardcaml_test_native";
+              "ocaml";
+              "link";
+              "native"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "../_build/as_ppx/ppx.native"])
+            ]);
+          ([
+              "oasis_executable_ppx_hardcaml_test_byte";
+              "ocaml";
+              "ocamldep";
+              "byte"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "../_build/as_ppx/ppx.native"])
+            ]);
+          ([
+              "oasis_executable_ppx_hardcaml_test_native";
+              "ocaml";
+              "ocamldep";
+              "native"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "../_build/as_ppx/ppx.native"])
+            ]);
+          ([
+              "oasis_executable_ppx_hardcaml_test_byte";
+              "ocaml";
+              "compile";
+              "byte"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "../_build/as_ppx/ppx.native"])
+            ]);
+          ([
+              "oasis_executable_ppx_hardcaml_test_native";
+              "ocaml";
+              "compile";
+              "native"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "../_build/as_ppx/ppx.native"])
+            ])
+       ];
      includes = [("as_ppx", ["src"])]
   }
   ;;
@@ -896,7 +954,7 @@ let conf = {MyOCamlbuildFindlib.no_automatic_syntax = false}
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default conf package_default;;
 
-# 900 "myocamlbuild.ml"
+# 958 "myocamlbuild.ml"
 (* OASIS_STOP *)
 let () =
   Ocamlbuild_plugin.dispatch (fun hook ->

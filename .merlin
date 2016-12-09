@@ -1,4 +1,7 @@
-PKG compiler-libs.common ppx_tools.metaquot ppx_core ppx_driver oUnit
+PKG compiler-libs.common ppx_tools.metaquot ppx_core ppx_driver oUnit hardcaml
 
-S .
-B _build
+S src
+S tests
+
+B _build/src
+B _build/tests

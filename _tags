@@ -2,7 +2,7 @@ true: predicate(custom_ppx)
 <src/*>: linkall
 <as_ppx/ppx.{byte,native}>: predicate(ppx_driver)
 # OASIS_START
-# DO NOT EDIT (digest: bf82ed0ac550282746858e0735764262)
+# DO NOT EDIT (digest: 49c362124237ba61ae0d8784d7fb2a7d)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -37,4 +37,13 @@ true: annot, bin_annot
 <as_ppx/*.ml{,i,y}>: package(ppx_tools)
 <as_ppx/*.ml{,i,y}>: package(ppx_tools.metaquot)
 <as_ppx/*.ml{,i,y}>: use_ppx_hardcaml
+# Executable ppx_hardcaml_test
+<tests/PpxHardcamlTest.{native,byte}>: oasis_executable_ppx_hardcaml_test_byte
+<tests/*.ml{,i,y}>: oasis_executable_ppx_hardcaml_test_byte
+<tests/PpxHardcamlTest.{native,byte}>: oasis_executable_ppx_hardcaml_test_native
+<tests/*.ml{,i,y}>: oasis_executable_ppx_hardcaml_test_native
+<tests/PpxHardcamlTest.{native,byte}>: package(hardcaml)
+<tests/PpxHardcamlTest.{native,byte}>: package(oUnit)
+<tests/*.ml{,i,y}>: package(hardcaml)
+<tests/*.ml{,i,y}>: package(oUnit)
 # OASIS_STOP
