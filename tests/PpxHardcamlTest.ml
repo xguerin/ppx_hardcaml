@@ -67,6 +67,11 @@ let int_signal_binop context =
   assert_equal [%hw (0x88 lor  s0)] s0;
   assert_equal [%hw (0x88 land s0)] s1
 
+let auto_resize_binop context =
+  let s0 = consti 10 2 in
+  let s1 = consti  6 2 in
+  assert_equal [%hw s0 == s1] (const "1")
+
 (*
  * Test suite definition
  *)
@@ -79,6 +84,7 @@ let suite = "PpxHardcamlTest" >::: [
     "signal_signal_binop"     >:: signal_signal_binop;
     "signal_int_binop"        >:: signal_int_binop;
     "int_signal_binop"        >:: int_signal_binop;
+    "auto_resize_binop"       >:: auto_resize_binop;
   ]
 
 let () = run_test_tt_main suite

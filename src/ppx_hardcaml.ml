@@ -110,7 +110,10 @@ let mkbinop ~loc expr label strn op0 op1 =
     [%expr ((fun [%p psym] -> [%e wbop]) [%e op1])]
   (* sig + sig -> sig +: sig *)
   | _ ->
-    mkbinopexpr ~loc ~typ:RightIsSignal expr label strn op0 op1
+    let max_expr = [%expr max (width [%e op0]) (width [%e op1])] in
+    let uresize0 = [%expr uresize [%e op0] [%e max_expr]] in
+    let uresize1 = [%expr uresize [%e op1] [%e max_expr]] in
+    mkbinopexpr ~loc ~typ:RightIsSignal expr label strn uresize0 uresize1
 
 let mkfncall ~loc expr label strn ops = 
   let hw_ops   = List.map (fun (l, e) -> (l, wrap_expr ~loc e)) ops
