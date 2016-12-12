@@ -223,6 +223,8 @@ let expr_mapper ~loc ~path:_ ({ pexp_desc; pexp_loc; pexp_attributes } as expr) 
     { expr with pexp_desc = Pexp_construct (ident, Some (wrap_expr ~loc nexpr)) }
   | Pexp_tuple (lexprs) ->
     { expr with pexp_desc = Pexp_tuple (List.map (fun e -> wrap_expr ~loc:pexp_loc e) lexprs) }
+  | Pexp_fun (label, exp_opt, pat, next) ->
+    { expr with pexp_desc = Pexp_fun (label, exp_opt, pat, wrap_expr ~loc next) }
   | _ -> expr
 
 let expr_extension =

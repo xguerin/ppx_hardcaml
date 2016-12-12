@@ -76,6 +76,18 @@ let multi_part_binop context =
   let a, b, c = consti 2 0, consti 2 1, consti 2 2 in
   assert_equal [%hw a + b + c] (consti 2 3)
 
+
+(*
+ * Inline functions
+ *)
+
+let inline_function context =
+  let s0 = const "10101010" in
+  let s1 = const "10001000" in
+  let%hw do_orr x y = x lor y in
+  assert_equal (do_orr s0 s1) s0
+
+
 (*
  * Test suite definition
  *)
@@ -90,6 +102,7 @@ let suite = "PpxHardcamlTest" >::: [
     "int_signal_binop"        >:: int_signal_binop;
     "auto_resize_binop"       >:: auto_resize_binop;
     "multi_part_binop"        >:: multi_part_binop;
+    "inline_function"         >:: inline_function;
   ]
 
 let () = run_test_tt_main suite
