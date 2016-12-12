@@ -90,7 +90,10 @@ let to_hw_ident ~loc ~typ op =
 let mkbinopexpr ~loc ~typ expr label strn op0 op1 =
   let hw_ident = to_hw_ident ~loc ~typ strn in
   let hw_label = { label with pexp_desc = Pexp_ident(hw_ident) } in
-  { expr with pexp_desc = Pexp_apply(hw_label, [ (Nolabel, op0); (Nolabel, op1) ]) }
+  let hw_op0 = wrap_expr ~loc op0 in
+  let hw_op1 = wrap_expr ~loc op1 in
+  { expr with pexp_desc = Pexp_apply(hw_label, [ (Nolabel, hw_op0);
+                                                 (Nolabel, hw_op1) ]) }
 
 let mkbinop ~loc expr label strn op0 op1 = 
   match op0.pexp_desc, op1.pexp_desc with
