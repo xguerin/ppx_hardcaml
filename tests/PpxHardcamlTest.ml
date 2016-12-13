@@ -117,6 +117,16 @@ let inline_ext_rec_let context =
   assert_equal res (const "8'hFF")
 
 (*
+ * Immediates
+ *)
+
+let%hw immediate_const context =
+  let x = 1h and y = 0xdh and z = 0b1010h in
+  let pow2 n x = x @ zero n in
+  let sum = x + y + (pow2 3 (2h + z)) in
+  assert_equal sum 206h
+
+(*
  * Test suite definition
  *)
 
@@ -133,6 +143,7 @@ let suite = "PpxHardcamlTest" >::: [
     "inline_function"         >:: inline_function;
     "structural_let"          >:: structural_let;
     "inline_ext_rec_let"      >:: inline_ext_rec_let;
+    "immediate_const"         >:: immediate_const;
   ]
 
 let () = run_test_tt_main suite

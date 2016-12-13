@@ -119,13 +119,13 @@ let mkbinopexpr ~recur ~loc ~typ expr label strn op0 op1 =
 let mkbinop ~recur ~loc expr label strn op0 op1 = 
   match op0.pexp_desc, op1.pexp_desc with
   (* 0 + 0 -> ?? *)
-  | Pexp_constant(Pconst_integer(_, _)), Pexp_constant(Pconst_integer(_, _)) ->
+  | Pexp_constant(Pconst_integer(_, None)), Pexp_constant(Pconst_integer(_, None)) ->
     location_exn ~loc "Hardware binary operation requires a signal"
   (* sig + 0 -> sig +:. 0 *)
-  | _, Pexp_constant(Pconst_integer(_, _)) ->
+  | _, Pexp_constant(Pconst_integer(_, None)) ->
     mkbinopexpr ~recur ~loc ~typ:RightIsConstInt expr label strn op0 op1
   (* 0 + sig -> ((fun sig -> consti (width sig) 0 +: sig) sig *)
-  | Pexp_constant(Pconst_integer(_, _)), _ ->
+  | Pexp_constant(Pconst_integer(_, None)), _ ->
     let wop0 = [%expr (consti (width [%e op1]) [%e op0])] in
     let tsym = mksym () in
     let esym = evar ~loc tsym in
@@ -175,7 +175,7 @@ let rec do_apply ~recur ~loc expr =
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
       [ var_tuple;
-        (_, ({ pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_bit))
+        (_, ({ pexp_desc = Pexp_constant(Pconst_integer(_, None)) } as hw_bit))
       ])
   | Pexp_apply(
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
@@ -188,8 +188,8 @@ let rec do_apply ~recur ~loc expr =
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
       [ var_tuple;
         (_, { pexp_desc = Pexp_tuple ([
-            { pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_v0int;
-            { pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_v1int
+            { pexp_desc = Pexp_constant(Pconst_integer(_, None)) } as hw_v0int;
+            { pexp_desc = Pexp_constant(Pconst_integer(_, None)) } as hw_v1int
           ])})
       ])
   | Pexp_apply(
@@ -204,7 +204,7 @@ let rec do_apply ~recur ~loc expr =
       { pexp_desc = Pexp_ident({ txt = Ldot(Lident("String"), "get"); loc }) } as label,
       [ var_tuple;
         (_, { pexp_desc = Pexp_tuple ([
-            { pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_v0int;
+            { pexp_desc = Pexp_constant(Pconst_integer(_, None)) } as hw_v0int;
             { pexp_desc = Pexp_ident(_) } as hw_v1int
           ])})
       ])
@@ -213,7 +213,7 @@ let rec do_apply ~recur ~loc expr =
       [ var_tuple;
         (_, { pexp_desc = Pexp_tuple ([
             { pexp_desc = Pexp_ident(_) } as hw_v0int;
-            { pexp_desc = Pexp_constant(Pconst_integer(_, _)) } as hw_v1int
+            { pexp_desc = Pexp_constant(Pconst_integer(_, None)) } as hw_v1int
           ])})
       ]) ->
     mkbitrange ~loc expr label var_tuple hw_v0int hw_v1int
@@ -228,6 +228,10 @@ let rec do_apply ~recur ~loc expr =
 
 let do_let ~recur ~loc bindings =
   List.map (wrap_let_binding ~recur ~loc) bindings
+
+let do_const_int ~loc const =
+  let expr = [%expr consti (HardCaml.Utils.nbits [%e const]) [%e const]] in
+  expr.pexp_desc
 
 (* Expression mapper *)
 
@@ -251,6 +255,9 @@ let expr_mapper ~loc ~path:_ ({ pexp_desc; pexp_loc; pexp_attributes } as bexpr)
   | Pexp_fun (label, exp_opt, pat, nexpr) ->
     let next = wrap_expr ~recur ~loc nexpr in
     { expr with pexp_desc = Pexp_fun (label, exp_opt, pat, next) }
+  | Pexp_constant(Pconst_integer(txt, Some('h'))) ->
+    let tconst = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
+    { expr with pexp_desc = do_const_int ~loc tconst }
   | _ -> expr
 
 let expr_extension =
