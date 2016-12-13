@@ -76,7 +76,6 @@ let multi_part_binop context =
   let a, b, c = consti 2 0, consti 2 1, consti 2 2 in
   assert_equal [%hw a + b + c] (consti 2 3)
 
-
 (*
  * Inline functions
  *)
@@ -87,6 +86,35 @@ let inline_function context =
   let%hw do_orr x y = x lor y in
   assert_equal (do_orr s0 s1) s0
 
+(*
+ * Structural let item
+ *)
+
+let%hw combine_signals a b =
+  let sub_a = a.[11,08]
+  and sub_b = b.[15,12]
+  in
+  sub_a @ sub_b
+
+let structural_let context =
+  let s0 = const "16'h0F00" in
+  let s1 = const "16'hF000" in
+  assert_equal (combine_signals s0 s1) (const "8'hFF")
+
+(*
+ * Inline recursion let
+ *)
+
+let inline_rec_let context =
+  let s0 = const "16'h0F00" in
+  let s1 = const "16'hF000" in
+  let%hw res =
+    let sub_0 = s0.[11,08]
+    and sub_1 = s1.[15,12]
+    in
+    sub_0 @ sub_1
+  in
+  assert_equal res (const "8'hFF")
 
 (*
  * Test suite definition
@@ -103,6 +131,8 @@ let suite = "PpxHardcamlTest" >::: [
     "auto_resize_binop"       >:: auto_resize_binop;
     "multi_part_binop"        >:: multi_part_binop;
     "inline_function"         >:: inline_function;
+    "structural_let"          >:: structural_let;
+    "inline_rec_let"          >:: inline_rec_let;
   ]
 
 let () = run_test_tt_main suite
