@@ -37,15 +37,32 @@ let location_exn ~loc msg =
   |> raise
 ;;
 
+(* Attributes *)
+
+let get_recur_attr ({ pexp_attributes } as expr) =
+  let rec scanner = function
+    | [] -> false, []
+    | ({ txt = "hwrec" }, _) :: tl -> 
+      let a, b = scanner tl in ( a || true, b)
+    | hd :: tl ->
+      let a, b = scanner tl in ( a, hd :: b)
+  in
+  let found, nattrs = scanner pexp_attributes in
+  (found, { expr with pexp_attributes = nattrs })
+
+let set_recur_attr ~recur ~loc ({ pexp_attributes } as expr) =
+  let nattrs = if recur
+    then (Location.mkloc "hwrec" loc, PStr([])) :: pexp_attributes
+    else pexp_attributes
+  in
+  { expr with pexp_attributes = nattrs }
+
 (* Wrappers *)
 
-let get_ext_name = function
-  | false -> "hw"
-  | true  -> "hw'"
-
-let wrap_expr ~recur ~loc ({ pexp_desc; pexp_loc; pexp_attributes } as expr) =
-  let ext = Location.mkloc (get_ext_name recur) loc in
-  let evl = Pstr_eval({ pexp_desc; pexp_loc; pexp_attributes }, pexp_attributes) in 
+let wrap_expr ~recur ~loc ({ pexp_loc } as expr) =
+  let ext = Location.mkloc "hw" loc in
+  let bse = set_recur_attr ~recur ~loc expr in
+  let evl = Pstr_eval(bse, []) in 
   let str = PStr([{ pstr_desc = evl ; pstr_loc = pexp_loc }])
   in
   { expr with pexp_desc = Pexp_extension(ext, str) }
@@ -216,7 +233,8 @@ let do_let ~recur ~loc bindings =
 
 open Ppx_core.Std
 
-let expr_mapper ~recur ~loc ~path:_ ({ pexp_desc; pexp_loc; pexp_attributes } as expr) =
+let expr_mapper ~loc ~path:_ ({ pexp_desc; pexp_loc; pexp_attributes } as bexpr) =
+  let recur, expr = get_recur_attr bexpr in
   match pexp_desc with
   | Pexp_apply(_, _) ->
     do_apply ~recur ~loc expr
@@ -235,12 +253,12 @@ let expr_mapper ~recur ~loc ~path:_ ({ pexp_desc; pexp_loc; pexp_attributes } as
     { expr with pexp_desc = Pexp_fun (label, exp_opt, pat, next) }
   | _ -> expr
 
-let expr_extension ~recur =
+let expr_extension =
   Extension.V2.declare
-    (get_ext_name recur)
+    "hw"
     Extension.Context.expression
     Ast_pattern.(single_expr_payload __)
-    (expr_mapper ~recur)
+    expr_mapper
 
 (* Structure mapper *)
 
@@ -272,7 +290,5 @@ let str_extension =
 
 let () =
   Ppx_driver.register_transformation "hw"
-    ~extensions:[ expr_extension ~recur:false ; str_extension ];
-  Ppx_driver.register_transformation "hw'"
-    ~extensions:[ expr_extension ~recur:true ]
+    ~extensions:[ expr_extension  ; str_extension ]
 ;;

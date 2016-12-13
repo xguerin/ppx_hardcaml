@@ -105,14 +105,6 @@ let structural_let context =
  * Inline recursion let
  *)
 
-let ext_rec_let context =
-  let s0 = const "16'h0F00" in
-  let s1 = const "16'hF000" in
-  let%hw' sub_0 = s0.[11,08] in
-  let sub_1 = s1.[15,12] in
-  let res = sub_0 @ sub_1 in
-  assert_equal res (const "8'hFF")
-
 let inline_ext_rec_let context =
   let s0 = const "16'h0F00" in
   let s1 = const "16'hF000" in
@@ -140,7 +132,6 @@ let suite = "PpxHardcamlTest" >::: [
     "multi_part_binop"        >:: multi_part_binop;
     "inline_function"         >:: inline_function;
     "structural_let"          >:: structural_let;
-    "ext_rec_let"             >:: ext_rec_let;
     "inline_ext_rec_let"      >:: inline_ext_rec_let;
   ]
 
