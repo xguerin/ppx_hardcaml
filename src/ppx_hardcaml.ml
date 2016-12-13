@@ -41,7 +41,7 @@ let location_exn ~loc msg =
 
 let get_ext_name = function
   | false -> "hw"
-  | true  -> "hw*"
+  | true  -> "hw'"
 
 let wrap_expr ~recur ~loc ({ pexp_desc; pexp_loc; pexp_attributes } as expr) =
   let ext = Location.mkloc (get_ext_name recur) loc in
@@ -273,6 +273,6 @@ let str_extension =
 let () =
   Ppx_driver.register_transformation "hw"
     ~extensions:[ expr_extension ~recur:false ; str_extension ];
-  Ppx_driver.register_transformation "hw*"
+  Ppx_driver.register_transformation "hw'"
     ~extensions:[ expr_extension ~recur:true ]
 ;;
