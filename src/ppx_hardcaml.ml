@@ -31,147 +31,95 @@ let location_exn ~loc msg =
 
 (* Helpers *)
 
-let getr ({ pexp_attributes } as expr) =
-  let rec scanner = function
-    | [] -> false, []
-    | ({ txt = "hwrec" }, _) :: tl -> 
-      let a, b = scanner tl in ( a || true, b)
-    | hd :: tl ->
-      let a, b = scanner tl in ( a, hd :: b)
-  in
-  let found, nattrs = scanner pexp_attributes in
-  (found, { expr with pexp_attributes = nattrs })
-
-let setr ~r ({ pexp_attributes } as expr) =
-  let nattrs = if r
-    then (Location.mknoloc "hwrec", PStr([])) :: pexp_attributes
-    else pexp_attributes
-  in
-  { expr with pexp_attributes = nattrs }
-
-let ewrap ~r expr =
-  [%expr [%hw [%e setr ~r expr]]]
-
-let uresize ~r a b =
-  let hw_a = [%expr [%e ewrap ~r a]]
-  and hw_b = [%expr [%e ewrap ~r b]]
+let uresize a b =
+  let hw_a = [%expr [%e a]]
+  and hw_b = [%expr [%e b]]
   in
   [%expr uresize [%e hw_a] (max (width [%e hw_a]) (width [%e hw_b]))]
 
 (* Expression mapper *)
 
-open Ppx_core.Std
-
-let expr_mapper ~loc ~path:_ bexpr =
-  let r, expr = getr bexpr in
-  match bexpr with
+let expr_mapper m = function
   (* Bitwise operators with right-hand constant *)
-  | [%expr [%e? a] lor  [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] |:.  [%e ewrap ~r b]]
-  | [%expr [%e? a] land [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] &:.  [%e ewrap ~r b]]
-  | [%expr [%e? a] lxor [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] ^:.  [%e ewrap ~r b]]
+  | [%expr [%e? a] lor  [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] |:.  [%e b]]
+  | [%expr [%e? a] land [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] &:.  [%e b]]
+  | [%expr [%e? a] lxor [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] ^:.  [%e b]]
   (* Arithmetic operators with right-hand constant *)
-  | [%expr [%e? a] +    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] +:.  [%e ewrap ~r b]]
-  | [%expr [%e? a] *    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] *:.  [%e ewrap ~r b]]
-  | [%expr [%e? a] -    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] -:.  [%e ewrap ~r b]]
+  | [%expr [%e? a] +    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] +:.  [%e b]]
+  | [%expr [%e? a] *    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] *:.  [%e b]]
+  | [%expr [%e? a] -    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] -:.  [%e b]]
   (* Comparison operators with right-hand constant *)
-  | [%expr [%e? a] <    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] <:.  [%e ewrap ~r b]]
-  | [%expr [%e? a] <=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] <=:. [%e ewrap ~r b]]
-  | [%expr [%e? a] >    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] >:.  [%e ewrap ~r b]]
-  | [%expr [%e? a] >=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] >=:. [%e ewrap ~r b]]
-  | [%expr [%e? a] ==   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] ==:. [%e ewrap ~r b]]
-  | [%expr [%e? a] <>   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> [%expr [%e ewrap ~r a] <>:. [%e ewrap ~r b]]
+  | [%expr [%e? a] <    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] <:.  [%e b]]
+  | [%expr [%e? a] <=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] <=:. [%e b]]
+  | [%expr [%e? a] >    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] >:.  [%e b]]
+  | [%expr [%e? a] >=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] >=:. [%e b]]
+  | [%expr [%e? a] ==   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] ==:. [%e b]]
+  | [%expr [%e? a] <>   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] <>:. [%e b]]
   (* Bitwise operators *)
-  | [%expr [%e? a] lor  [%e? b]] -> [%expr [%e uresize ~r a b] |:  [%e uresize ~r b a]]
-  | [%expr [%e? a] land [%e? b]] -> [%expr [%e uresize ~r a b] &:  [%e uresize ~r b a]]
-  | [%expr [%e? a] lxor [%e? b]] -> [%expr [%e uresize ~r a b] ^:  [%e uresize ~r b a]]
-  | [%expr         lnot [%e? a]] -> [%expr                     ~:  [%e ewrap   ~r   a]]
+  | [%expr [%e? a] lor  [%e? b]] -> m.expr m [%expr [%e uresize a b] |:  [%e uresize b a]]
+  | [%expr [%e? a] land [%e? b]] -> m.expr m [%expr [%e uresize a b] &:  [%e uresize b a]]
+  | [%expr [%e? a] lxor [%e? b]] -> m.expr m [%expr [%e uresize a b] ^:  [%e uresize b a]]
+  | [%expr         lnot [%e? a]] -> m.expr m [%expr                  ~:  [%e           a]]
   (* Arithmetic operators *)
-  | [%expr [%e? a] +    [%e? b]] -> [%expr [%e uresize ~r a b] +:  [%e uresize ~r b a]]
-  | [%expr [%e? a] *    [%e? b]] -> [%expr [%e uresize ~r a b] *:  [%e uresize ~r b a]]
-  | [%expr [%e? a] -    [%e? b]] -> [%expr [%e uresize ~r a b] -:  [%e uresize ~r b a]]
+  | [%expr [%e? a] +    [%e? b]] -> m.expr m [%expr [%e uresize a b] +:  [%e uresize b a]]
+  | [%expr [%e? a] *    [%e? b]] -> m.expr m [%expr [%e uresize a b] *:  [%e uresize b a]]
+  | [%expr [%e? a] -    [%e? b]] -> m.expr m [%expr [%e uresize a b] -:  [%e uresize b a]]
   (* Comparison operators *)
-  | [%expr [%e? a] <    [%e? b]] -> [%expr [%e uresize ~r a b] <:  [%e uresize ~r b a]]
-  | [%expr [%e? a] <=   [%e? b]] -> [%expr [%e uresize ~r a b] <=: [%e uresize ~r b a]]
-  | [%expr [%e? a] >    [%e? b]] -> [%expr [%e uresize ~r a b] >:  [%e uresize ~r b a]]
-  | [%expr [%e? a] >=   [%e? b]] -> [%expr [%e uresize ~r a b] >=: [%e uresize ~r b a]]
-  | [%expr [%e? a] ==   [%e? b]] -> [%expr [%e uresize ~r a b] ==: [%e uresize ~r b a]]
-  | [%expr [%e? a] <>   [%e? b]] -> [%expr [%e uresize ~r a b] <>: [%e uresize ~r b a]]
+  | [%expr [%e? a] <    [%e? b]] -> m.expr m [%expr [%e uresize a b] <:  [%e uresize b a]]
+  | [%expr [%e? a] <=   [%e? b]] -> m.expr m [%expr [%e uresize a b] <=: [%e uresize b a]]
+  | [%expr [%e? a] >    [%e? b]] -> m.expr m [%expr [%e uresize a b] >:  [%e uresize b a]]
+  | [%expr [%e? a] >=   [%e? b]] -> m.expr m [%expr [%e uresize a b] >=: [%e uresize b a]]
+  | [%expr [%e? a] ==   [%e? b]] -> m.expr m [%expr [%e uresize a b] ==: [%e uresize b a]]
+  | [%expr [%e? a] <>   [%e? b]] -> m.expr m [%expr [%e uresize a b] <>: [%e uresize b a]]
   (* Concatenation operator *)
-  | [%expr [%e? a] @    [%e? b]] -> [%expr [%e uresize ~r a b] @:  [%e uresize ~r b a]]
+  | [%expr [%e? a] @    [%e? b]] -> m.expr m [%expr [%e uresize a b] @:  [%e uresize b a]]
   (* Process valid signal index operator *)
-  | [%expr [%e? s].[[%e? i0], [%e? i1]]] -> [%expr select [%e s] [%e ewrap ~r i0] [%e ewrap ~r i1]]
+  | [%expr [%e? s].[[%e? i0], [%e? i1]]] -> m.expr m [%expr select [%e s] [%e i0] [%e i1]]
   (* Process valid signal single bit operator *)
-  | [%expr [%e? s].[[%e? i]]] -> [%expr bit [%e ewrap ~r s] [%e ewrap ~r i]]
-  (* Process function calls *)
-  | { pexp_desc = Pexp_apply(ident, ops) } ->
-    List.fold_left
-      ~f:(fun acc (_, e) -> [%expr [%e acc] [%e ewrap ~r e]])
-      ~init:[%expr [%e ident]]
-      ops
-  (* fun construct *)
-  | [%expr fun [%p? pat] -> [%e? expr]] ->
-    [%expr fun [%p pat] -> [%e ewrap ~r expr]]
+  | [%expr [%e? s].[[%e? i]]] -> m.expr m [%expr bit [%e s] [%e i]]
   (* if/then/else construct *)
-  | [%expr if [%e? cnd] then [%e? e0] else [%e? e1]] ->
-    [%expr mux2 [%e ewrap ~r cnd] [%e ewrap ~r e0] [%e ewrap ~r e1]]
-  (* Let construct *)
-  | { pexp_desc = Pexp_let(Nonrecursive, bindings, nexpr) } ->
-    let wb = List.map
-        (fun ({ pvb_expr } as binding) -> { binding with pvb_expr = ewrap ~r pvb_expr })
-        bindings in
-    let next = if r then ewrap ~r nexpr else nexpr in
-    { expr with pexp_desc = Pexp_let(Nonrecursive, wb, next) }
-  (* List construct *)
-  | { pexp_desc = Pexp_construct (({ txt = Lident ("::"); loc } as ident), Some (nexpr)) } -> 
-    let next = ewrap ~r nexpr in
-    { expr with pexp_desc = Pexp_construct (ident, Some (next)) }
-  (* Tuple construct *)
-  | { pexp_desc = Pexp_tuple (lexprs) } ->
-    let next = List.map (fun e -> ewrap ~r e) lexprs in
-    { expr with pexp_desc = Pexp_tuple (next) }
+  | [%expr if [%e? cnd] then [%e? e0] else [%e? e1]] -> m.expr m [%expr mux2 [%e cnd] [%e e0] [%e e1]]
   (* Constant *)
-  | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } ->
+  | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr ->
     let tconst = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
-    [%expr consti (HardCaml.Utils.nbits [%e tconst]) [%e tconst]] 
+    m.expr m [%expr consti (HardCaml.Utils.nbits [%e tconst]) [%e tconst]] 
   (* Default *)
-  | _ -> expr
+  | expr -> default_mapper.expr m expr
 
-let expr_extension =
-  Extension.V2.declare
-    "hw"
-    Extension.Context.expression
-    Ast_pattern.(single_expr_payload __)
-    expr_mapper
+(* Top level mapper *)
 
-(* Structure mapper *)
+let mapper argv = 
+  { default_mapper with
+    (* Expression mapper *)
+    expr = begin fun mapper expr ->
+      match expr with
+      (* let%hw expression *)
+      | [%expr [%hw [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
+        let wb = List.map
+            (fun ({ pvb_pat; pvb_expr } as binding) ->
+               { binding with
+                 pvb_pat = mapper.pat mapper pvb_pat;
+                 pvb_expr = expr_mapper { mapper with expr = expr_mapper } pvb_expr;
+               })
+            bindings in
+        let next = mapper.expr mapper nexp in
+        { expr with pexp_desc = Pexp_let(Nonrecursive, wb, next) }
+      (* [%hw ] expression *)
+      | [%expr [%hw [%e? e]]] ->
+        [%expr [%e expr_mapper { mapper with expr = expr_mapper } e]]
+      (* Default mapper *)
+      | _ -> default_mapper.expr mapper expr
+    end;
+    (* Structure item mapper *)
+    structure_item = begin fun mapper stri ->
+      match stri with
+      (* [%hw let pat = <expr>] or 'let%hw pat = <expr>' *)
+      | [%stri [%%hw let [%p? var] = [%e? e0]]] ->
+        [%stri let [%p mapper.pat mapper var] = 
+          [%e expr_mapper { mapper with expr = expr_mapper } e0]]
+      (* Default mapper *)
+      | _ -> default_mapper.structure_item mapper stri
+    end
+  }
 
-let rec str_parser ~loc = function
-  | [] -> []
-  | ({ pvb_expr } as vb) :: tl ->
-    let next = ewrap ~r:true pvb_expr in
-    { vb with pvb_expr = next } :: (str_parser ~loc tl)
-
-let str_mapper ~loc ~path:_ ({ pstr_desc; pstr_loc } as str_item) = 
-  match pstr_desc with
-  | Pstr_value (Nonrecursive, vbs) ->
-    { str_item with pstr_desc = Pstr_value (Nonrecursive, str_parser ~loc vbs) }
-  | _ -> str_item
-
-let pstr_item str_item =
-  let open Ast_pattern in
-  pstr (str_item ^:: nil)
-
-let str_extension =
-  Extension.V2.declare
-    "hw"
-    Extension.Context.structure_item
-    Ast_pattern.(pstr_item __)
-    str_mapper
-;;
-
-(* Driver registration *)
-
-let () =
-  Ppx_driver.register_transformation "hw"
-    ~extensions:[ expr_extension ; str_extension ]
-;;
+let () = register "hw" mapper

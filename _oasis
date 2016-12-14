@@ -13,35 +13,25 @@ OCamlVersion:           >= 4.03
 Plugins:                DevFiles (0.4)
 Synopsis:               PPX plugin for the OCAML OPAM hardcaml package.
 Version:                1.1.0
-XOCamlbuildPluginTags:  package(ppx_driver.ocamlbuild), package(js-build-tools.ocamlbuild_goodies)
 
 SourceRepository github
   Type:     git
   Location: https://github.com/xguerin/ppx_hardcaml.git
 
-Library ppx_hardcaml
-  Path:         src/
-  Pack:         false
-  Modules:      Ppx_hardcaml
-  BuildDepends: compiler-libs.common,
-                ppx_tools,
-                ppx_tools.metaquot,
-                ppx_core,
-                ppx_driver
-
-Executable ppx
-  Path:           as_ppx
-  MainIs:         ppx.ml
+Executable ppx_hardcaml
+  Path:           src
+  MainIs:         ppx_hardcaml.ml
   CompiledObject: best
-  BuildDepends:   ppx_hardcaml,
-                  ppx_driver
+  BuildDepends:   compiler-libs.common,
+                  ppx_tools,
+                  ppx_tools.metaquot
 
 Executable ppx_hardcaml_test
   Path:           tests
   MainIs:         PpxHardcamlTest.ml
   CompiledObject: best
-  ByteOpt:        -ppx ../_build/as_ppx/ppx.native
-  NativeOpt:      -ppx ../_build/as_ppx/ppx.native
+  ByteOpt:        -ppx ../_build/src/ppx_hardcaml.native
+  NativeOpt:      -ppx ../_build/src/ppx_hardcaml.native
   Install:        false
   Build$:         flag(tests)
   BuildDepends:   hardcaml,

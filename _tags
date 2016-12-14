@@ -2,7 +2,7 @@ true: predicate(custom_ppx)
 <src/*>: linkall
 <as_ppx/ppx.{byte,native}>: predicate(ppx_driver)
 # OASIS_START
-# DO NOT EDIT (digest: 49c362124237ba61ae0d8784d7fb2a7d)
+# DO NOT EDIT (digest: 7ab48cd5d49a125be3cef6870451fd84)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -17,26 +17,13 @@ true: annot, bin_annot
 ".git": not_hygienic
 "_darcs": -traverse
 "_darcs": not_hygienic
-# Library ppx_hardcaml
-"src/ppx_hardcaml.cmxs": use_ppx_hardcaml
+# Executable ppx_hardcaml
+<src/ppx_hardcaml.{native,byte}>: package(compiler-libs.common)
+<src/ppx_hardcaml.{native,byte}>: package(ppx_tools)
+<src/ppx_hardcaml.{native,byte}>: package(ppx_tools.metaquot)
 <src/*.ml{,i,y}>: package(compiler-libs.common)
-<src/*.ml{,i,y}>: package(ppx_core)
-<src/*.ml{,i,y}>: package(ppx_driver)
 <src/*.ml{,i,y}>: package(ppx_tools)
 <src/*.ml{,i,y}>: package(ppx_tools.metaquot)
-# Executable ppx
-<as_ppx/ppx.{native,byte}>: package(compiler-libs.common)
-<as_ppx/ppx.{native,byte}>: package(ppx_core)
-<as_ppx/ppx.{native,byte}>: package(ppx_driver)
-<as_ppx/ppx.{native,byte}>: package(ppx_tools)
-<as_ppx/ppx.{native,byte}>: package(ppx_tools.metaquot)
-<as_ppx/ppx.{native,byte}>: use_ppx_hardcaml
-<as_ppx/*.ml{,i,y}>: package(compiler-libs.common)
-<as_ppx/*.ml{,i,y}>: package(ppx_core)
-<as_ppx/*.ml{,i,y}>: package(ppx_driver)
-<as_ppx/*.ml{,i,y}>: package(ppx_tools)
-<as_ppx/*.ml{,i,y}>: package(ppx_tools.metaquot)
-<as_ppx/*.ml{,i,y}>: use_ppx_hardcaml
 # Executable ppx_hardcaml_test
 <tests/PpxHardcamlTest.{native,byte}>: oasis_executable_ppx_hardcaml_test_byte
 <tests/*.ml{,i,y}>: oasis_executable_ppx_hardcaml_test_byte
