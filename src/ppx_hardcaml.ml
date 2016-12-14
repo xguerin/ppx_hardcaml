@@ -31,7 +31,7 @@ let location_exn ~loc msg =
 
 (* Helpers *)
 
-let uresize a b =
+let (++) a b =
   let hw_a = [%expr [%e a]]
   and hw_b = [%expr [%e b]]
   in
@@ -39,52 +39,71 @@ let uresize a b =
 
 (* Expression mapper *)
 
-let expr_mapper m = function
-  (* Bitwise operators with right-hand constant *)
-  | [%expr [%e? a] lor  [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] |:.  [%e b]]
-  | [%expr [%e? a] land [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] &:.  [%e b]]
-  | [%expr [%e? a] lxor [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] ^:.  [%e b]]
-  (* Arithmetic operators with right-hand constant *)
-  | [%expr [%e? a] +    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] +:.  [%e b]]
-  | [%expr [%e? a] *    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] *:.  [%e b]]
-  | [%expr [%e? a] -    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] -:.  [%e b]]
-  (* Comparison operators with right-hand constant *)
-  | [%expr [%e? a] <    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] <:.  [%e b]]
-  | [%expr [%e? a] <=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] <=:. [%e b]]
-  | [%expr [%e? a] >    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] >:.  [%e b]]
-  | [%expr [%e? a] >=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] >=:. [%e b]]
-  | [%expr [%e? a] ==   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] ==:. [%e b]]
-  | [%expr [%e? a] <>   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> m.expr m [%expr [%e a] <>:. [%e b]]
-  (* Bitwise operators *)
-  | [%expr [%e? a] lor  [%e? b]] -> m.expr m [%expr [%e uresize a b] |:  [%e uresize b a]]
-  | [%expr [%e? a] land [%e? b]] -> m.expr m [%expr [%e uresize a b] &:  [%e uresize b a]]
-  | [%expr [%e? a] lxor [%e? b]] -> m.expr m [%expr [%e uresize a b] ^:  [%e uresize b a]]
-  | [%expr         lnot [%e? a]] -> m.expr m [%expr                  ~:  [%e           a]]
-  (* Arithmetic operators *)
-  | [%expr [%e? a] +    [%e? b]] -> m.expr m [%expr [%e uresize a b] +:  [%e uresize b a]]
-  | [%expr [%e? a] *    [%e? b]] -> m.expr m [%expr [%e uresize a b] *:  [%e uresize b a]]
-  | [%expr [%e? a] -    [%e? b]] -> m.expr m [%expr [%e uresize a b] -:  [%e uresize b a]]
-  (* Comparison operators *)
-  | [%expr [%e? a] <    [%e? b]] -> m.expr m [%expr [%e uresize a b] <:  [%e uresize b a]]
-  | [%expr [%e? a] <=   [%e? b]] -> m.expr m [%expr [%e uresize a b] <=: [%e uresize b a]]
-  | [%expr [%e? a] >    [%e? b]] -> m.expr m [%expr [%e uresize a b] >:  [%e uresize b a]]
-  | [%expr [%e? a] >=   [%e? b]] -> m.expr m [%expr [%e uresize a b] >=: [%e uresize b a]]
-  | [%expr [%e? a] ==   [%e? b]] -> m.expr m [%expr [%e uresize a b] ==: [%e uresize b a]]
-  | [%expr [%e? a] <>   [%e? b]] -> m.expr m [%expr [%e uresize a b] <>: [%e uresize b a]]
-  (* Concatenation operator *)
-  | [%expr [%e? a] @    [%e? b]] -> m.expr m [%expr [%e uresize a b] @:  [%e uresize b a]]
-  (* Process valid signal index operator *)
-  | [%expr [%e? s].[[%e? i0], [%e? i1]]] -> m.expr m [%expr select [%e s] [%e i0] [%e i1]]
-  (* Process valid signal single bit operator *)
-  | [%expr [%e? s].[[%e? i]]] -> m.expr m [%expr bit [%e s] [%e i]]
-  (* if/then/else construct *)
-  | [%expr if [%e? cnd] then [%e? e0] else [%e? e1]] -> m.expr m [%expr mux2 [%e cnd] [%e e0] [%e e1]]
-  (* Constant *)
-  | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr ->
-    let tconst = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
-    m.expr m [%expr consti (HardCaml.Utils.nbits [%e tconst]) [%e tconst]] 
-  (* Default *)
-  | expr -> default_mapper.expr m expr
+let check_index_format expr =
+  match expr.pexp_desc with
+  | Pexp_constant(Pconst_integer(_, _))
+  | Pexp_apply(_, _)
+  | Pexp_ident(_) -> ()
+  | _ -> location_exn ~loc:expr.pexp_loc "Invalid signal subscript format"
+
+let expr_mapper m expr =
+  (* Check the type of the expression *)
+  begin match expr with 
+    (* Bitwise operators with right-hand constant *)
+    | [%expr [%e? a] lor  [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] |:.  [%e b]]
+    | [%expr [%e? a] land [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] &:.  [%e b]]
+    | [%expr [%e? a] lxor [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] ^:.  [%e b]]
+    (* Arithmetic operators with right-hand constant *)
+    | [%expr [%e? a] +    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] +:.  [%e b]]
+    | [%expr [%e? a] *    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] *:.  [%e b]]
+    | [%expr [%e? a] -    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] -:.  [%e b]]
+    (* Comparison operators with right-hand constant *)
+    | [%expr [%e? a] <    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] <:.  [%e b]]
+    | [%expr [%e? a] <=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] <=:. [%e b]]
+    | [%expr [%e? a] >    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] >:.  [%e b]]
+    | [%expr [%e? a] >=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] >=:. [%e b]]
+    | [%expr [%e? a] ==   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] ==:. [%e b]]
+    | [%expr [%e? a] <>   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] <>:. [%e b]]
+    (* Bitwise operators *)
+    | [%expr [%e? a] lor  [%e? b]] -> Some [%expr [%e a ++ b] |:  [%e b ++ a]]
+    | [%expr [%e? a] land [%e? b]] -> Some [%expr [%e a ++ b] &:  [%e b ++ a]]
+    | [%expr [%e? a] lxor [%e? b]] -> Some [%expr [%e a ++ b] ^:  [%e b ++ a]]
+    | [%expr         lnot [%e? a]] -> Some [%expr             ~:  [%e      a]]
+    (* Arithmetic operators *)
+    | [%expr [%e? a] +    [%e? b]] -> Some [%expr [%e a ++ b] +:  [%e b ++ a]]
+    | [%expr [%e? a] *    [%e? b]] -> Some [%expr [%e a ++ b] *:  [%e b ++ a]]
+    | [%expr [%e? a] -    [%e? b]] -> Some [%expr [%e a ++ b] -:  [%e b ++ a]]
+    (* Comparison operators *)
+    | [%expr [%e? a] <    [%e? b]] -> Some [%expr [%e a ++ b] <:  [%e b ++ a]]
+    | [%expr [%e? a] <=   [%e? b]] -> Some [%expr [%e a ++ b] <=: [%e b ++ a]]
+    | [%expr [%e? a] >    [%e? b]] -> Some [%expr [%e a ++ b] >:  [%e b ++ a]]
+    | [%expr [%e? a] >=   [%e? b]] -> Some [%expr [%e a ++ b] >=: [%e b ++ a]]
+    | [%expr [%e? a] ==   [%e? b]] -> Some [%expr [%e a ++ b] ==: [%e b ++ a]]
+    | [%expr [%e? a] <>   [%e? b]] -> Some [%expr [%e a ++ b] <>: [%e b ++ a]]
+    (* Concatenation operator *)
+    | [%expr [%e? a] @    [%e? b]] -> Some [%expr [%e a ++ b] @:  [%e b ++ a]]
+    (* Process valid signal index operator *)
+    | [%expr [%e? s].[[%e? i0], [%e? i1]]] ->
+      check_index_format i0;
+      check_index_format i1;
+      Some [%expr select [%e s] [%e i0] [%e i1]]
+    (* Process valid signal single bit operator *)
+    | [%expr [%e? s].[[%e? i]]] ->
+      check_index_format i;
+      Some [%expr bit [%e s] [%e i]]
+    (* if/then/else construct *)
+    | [%expr if [%e? cnd] then [%e? e0] else [%e? e1]] -> Some [%expr mux2 [%e cnd] [%e e0] [%e e1]]
+    (* Constant *)
+    | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr ->
+      let tconst = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
+      Some [%expr consti (HardCaml.Utils.nbits [%e tconst]) [%e tconst]] 
+    (* Default *)
+    | expr -> None
+  end
+  (* Call the proper mapper if the expression was rewritten or not *)
+  |> function
+  | Some (expr) -> m.expr m expr
+  | None -> default_mapper.expr m expr
 
 (* Top level mapper *)
 
