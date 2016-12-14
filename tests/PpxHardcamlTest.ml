@@ -61,12 +61,6 @@ let signal_int_binop context =
   assert_equal [%hw (s0 lor  0x88)] s0;
   assert_equal [%hw (s0 land 0x88)] s1
 
-let int_signal_binop context =
-  let s0 = const "10101010" in
-  let s1 = const "10001000" in
-  assert_equal [%hw (0x88 lor  s0)] s0;
-  assert_equal [%hw (0x88 land s0)] s1
-
 let auto_resize_binop context =
   let s0 = consti 10 2 in
   let s1 = consti  6 2 in
@@ -137,7 +131,6 @@ let suite = "PpxHardcamlTest" >::: [
     "var_bit_range"           >:: var_bit_range;
     "signal_signal_binop"     >:: signal_signal_binop;
     "signal_int_binop"        >:: signal_int_binop;
-    "int_signal_binop"        >:: int_signal_binop;
     "auto_resize_binop"       >:: auto_resize_binop;
     "multi_part_binop"        >:: multi_part_binop;
     "inline_function"         >:: inline_function;
