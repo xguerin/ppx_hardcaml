@@ -1,36 +1,4 @@
-true: predicate(custom_ppx)
-<src/*>: linkall
-<as_ppx/ppx.{byte,native}>: predicate(ppx_driver)
-# OASIS_START
-# DO NOT EDIT (digest: 7ab48cd5d49a125be3cef6870451fd84)
-# Ignore VCS directories, you can use the same kind of rule outside
-# OASIS_START/STOP if you want to exclude directories that contains
-# useless stuff for the build process
-true: annot, bin_annot
-<**/.svn>: -traverse
-<**/.svn>: not_hygienic
-".bzr": -traverse
-".bzr": not_hygienic
-".hg": -traverse
-".hg": not_hygienic
-".git": -traverse
-".git": not_hygienic
-"_darcs": -traverse
-"_darcs": not_hygienic
-# Executable ppx_hardcaml
-<src/ppx_hardcaml.{native,byte}>: package(compiler-libs.common)
-<src/ppx_hardcaml.{native,byte}>: package(ppx_tools)
-<src/ppx_hardcaml.{native,byte}>: package(ppx_tools.metaquot)
-<src/*.ml{,i,y}>: package(compiler-libs.common)
-<src/*.ml{,i,y}>: package(ppx_tools)
-<src/*.ml{,i,y}>: package(ppx_tools.metaquot)
-# Executable ppx_hardcaml_test
-<tests/PpxHardcamlTest.{native,byte}>: oasis_executable_ppx_hardcaml_test_byte
-<tests/*.ml{,i,y}>: oasis_executable_ppx_hardcaml_test_byte
-<tests/PpxHardcamlTest.{native,byte}>: oasis_executable_ppx_hardcaml_test_native
-<tests/*.ml{,i,y}>: oasis_executable_ppx_hardcaml_test_native
-<tests/PpxHardcamlTest.{native,byte}>: package(hardcaml)
-<tests/PpxHardcamlTest.{native,byte}>: package(oUnit)
-<tests/*.ml{,i,y}>: package(hardcaml)
-<tests/*.ml{,i,y}>: package(oUnit)
-# OASIS_STOP
+true: warn(@5@8@10@11@12@14@23@24@26@29@40), bin_annot, safe_string
+
+<src/*.{ml,mli,byte,native}>: package(ppx_tools.metaquot)
+<tests/*.{ml,byte,native}>: debug, package(oUnit), package(hardcaml)

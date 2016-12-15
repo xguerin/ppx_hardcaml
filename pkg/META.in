@@ -1,0 +1,3 @@
+version = "%{version}%"
+description = "PPX extension for HardCaml"
+ppx = "./ppx_hardcaml"

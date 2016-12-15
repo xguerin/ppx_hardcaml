@@ -1,6 +1,0 @@
-version         = "$(pkg_version)"
-description     = "PPX extension for hardcaml"
-requires        = "compiler-libs.common ppx_tools hardcaml"
-plugin(byte)    = "ppx_hardcaml.cma"
-plugin(native)	= "ppx_hardcaml.cmxs"
-exists_if       = "ppx_hardcaml.cma"
