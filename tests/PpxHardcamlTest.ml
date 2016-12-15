@@ -130,6 +130,20 @@ let%hw binary_immediate context =
   assert_equal bv bs
 
 (*
+ * if/then/else
+ *)
+
+let%hw select_const sel1 sel2 a b c d =
+  if sel1 then
+    if%hw sel2 then (a+b) else (a-b)
+  else
+    if%hw sel2 then (c+d) else (c-d)
+
+let select_const_test context =
+  let res = select_const true 1h 0b10h 0b011h 4h 5h in
+  assert_equal res 5h
+
+(*
  * Test suite definition
  *)
 
@@ -148,6 +162,7 @@ let suite = "PpxHardcamlTest" >::: [
     "nohw_immediate_const"    >:: nohw_immediate_const;
     "immediate_const"         >:: immediate_const;
     "binary_immediate"        >:: binary_immediate;
+    "select_const_test"       >:: select_const_test;
   ]
 
 let () = run_test_tt_main suite

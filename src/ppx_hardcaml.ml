@@ -89,7 +89,7 @@ let expr_mapper m expr =
       check_index_format i;
       Some [%expr bit [%e s] [%e i]]
     (* if/then/else construct *)
-    | [%expr if [%e? cnd] then [%e? e0] else [%e? e1]] ->
+    | [%expr [%hw if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
       Some [%expr mux2 [%e cnd] [%e e0] [%e e1]]
     (* Constant *)
     | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
