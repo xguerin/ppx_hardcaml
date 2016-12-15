@@ -49,21 +49,6 @@ let check_index_format expr =
 let expr_mapper m expr =
   (* Check the type of the expression *)
   begin match expr with 
-    (* Bitwise operators with right-hand constant *)
-    | [%expr [%e? a] lor  [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] |:.  [%e b]]
-    | [%expr [%e? a] land [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] &:.  [%e b]]
-    | [%expr [%e? a] lxor [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] ^:.  [%e b]]
-    (* Arithmetic operators with right-hand constant *)
-    | [%expr [%e? a] +    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] +:.  [%e b]]
-    | [%expr [%e? a] *    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] *:.  [%e b]]
-    | [%expr [%e? a] -    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] -:.  [%e b]]
-    (* Comparison operators with right-hand constant *)
-    | [%expr [%e? a] <    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] <:.  [%e b]]
-    | [%expr [%e? a] <=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] <=:. [%e b]]
-    | [%expr [%e? a] >    [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] >:.  [%e b]]
-    | [%expr [%e? a] >=   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] >=:. [%e b]]
-    | [%expr [%e? a] ==   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] ==:. [%e b]]
-    | [%expr [%e? a] <>   [%e? { pexp_desc = Pexp_constant(_) } as b ]] -> Some [%expr [%e a] <>:. [%e b]]
     (* Bitwise operators *)
     | [%expr [%e? a] lor  [%e? b]] -> Some [%expr [%e a ++ b] |:  [%e b ++ a]]
     | [%expr [%e? a] land [%e? b]] -> Some [%expr [%e a ++ b] &:  [%e b ++ a]]
@@ -92,11 +77,18 @@ let expr_mapper m expr =
       check_index_format i;
       Some [%expr bit [%e s] [%e i]]
     (* if/then/else construct *)
-    | [%expr if [%e? cnd] then [%e? e0] else [%e? e1]] -> Some [%expr mux2 [%e cnd] [%e e0] [%e e1]]
+    | [%expr if [%e? cnd] then [%e? e0] else [%e? e1]] ->
+      Some [%expr mux2 [%e cnd] [%e e0] [%e e1]]
     (* Constant *)
+    | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr
+      when String.length txt > 2 && String.sub txt ~pos:0 ~len:2 = "0b" ->
+      let l = String.length txt - 2 in
+      let s = String.sub txt ~pos:2 ~len:l in
+      let v = { expr with pexp_desc = Pexp_constant(Pconst_string(s, None)) } in
+      Some [%expr constb [%e v]] 
     | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr ->
-      let tconst = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
-      Some [%expr consti (HardCaml.Utils.nbits [%e tconst]) [%e tconst]] 
+      let v = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
+      Some [%expr consti (HardCaml.Utils.nbits [%e v]) [%e v]] 
     (* Default *)
     | expr -> None
   end

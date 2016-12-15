@@ -58,8 +58,8 @@ let signal_signal_binop context =
 let signal_int_binop context =
   let s0 = const "10101010" in
   let s1 = const "10001000" in
-  assert_equal [%hw (s0 lor  0x88)] s0;
-  assert_equal [%hw (s0 land 0x88)] s1
+  assert_equal [%hw (s0 lor  0x88h)] s0;
+  assert_equal [%hw (s0 land 0x88h)] s1
 
 let auto_resize_binop context =
   let s0 = consti 10 2 in
@@ -120,6 +120,11 @@ let%hw immediate_const context =
   let sum = x + y + (pow2 3 (2h + z)) in
   assert_equal sum 206h
 
+let%hw binary_immediate context =
+  let bv = 0b1010h in
+  let bs = constb "1010" in
+  assert_equal bv bs
+
 (*
  * Test suite definition
  *)
@@ -137,6 +142,7 @@ let suite = "PpxHardcamlTest" >::: [
     "structural_let"          >:: structural_let;
     "inline_ext_rec_let"      >:: inline_ext_rec_let;
     "immediate_const"         >:: immediate_const;
+    "binary_immediate"        >:: binary_immediate;
   ]
 
 let () = run_test_tt_main suite

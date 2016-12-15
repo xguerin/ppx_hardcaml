@@ -8,7 +8,8 @@ test: build
 
 clean:
 	ocamlbuild -clean
-	rm pkg/META
+	rm -f pkg/META
+	rm -f ppx_hardcaml.install
 
 .PHONY: build test clean
 
