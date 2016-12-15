@@ -114,6 +114,10 @@ let inline_ext_rec_let context =
  * Immediates
  *)
 
+let nohw_immediate_const context =
+  let z = 0b1010h in
+  assert_equal z (constb "1010")
+
 let%hw immediate_const context =
   let x = 1h and y = 0xdh and z = 0b1010h in
   let pow2 n x = x @ zero n in
@@ -141,6 +145,7 @@ let suite = "PpxHardcamlTest" >::: [
     "inline_function"         >:: inline_function;
     "structural_let"          >:: structural_let;
     "inline_ext_rec_let"      >:: inline_ext_rec_let;
+    "nohw_immediate_const"    >:: nohw_immediate_const;
     "immediate_const"         >:: immediate_const;
     "binary_immediate"        >:: binary_immediate;
   ]

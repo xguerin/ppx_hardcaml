@@ -46,6 +46,18 @@ let check_index_format expr =
   | Pexp_ident(_) -> ()
   | _ -> location_exn ~loc:expr.pexp_loc "Invalid signal subscript format"
 
+let const_mapper = function
+  | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr
+    when String.length txt > 2 && String.sub txt ~pos:0 ~len:2 = "0b" ->
+    let l = String.length txt - 2 in
+    let s = String.sub txt ~pos:2 ~len:l in
+    let v = { expr with pexp_desc = Pexp_constant(Pconst_string(s, None)) } in
+    [%expr constb [%e v]] 
+  | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr ->
+    let v = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
+    [%expr consti (HardCaml.Utils.nbits [%e v]) [%e v]] 
+  | { pexp_loc } -> location_exn ~loc:pexp_loc "Invalid constant format"
+
 let expr_mapper m expr =
   (* Check the type of the expression *)
   begin match expr with 
@@ -80,15 +92,8 @@ let expr_mapper m expr =
     | [%expr if [%e? cnd] then [%e? e0] else [%e? e1]] ->
       Some [%expr mux2 [%e cnd] [%e e0] [%e e1]]
     (* Constant *)
-    | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr
-      when String.length txt > 2 && String.sub txt ~pos:0 ~len:2 = "0b" ->
-      let l = String.length txt - 2 in
-      let s = String.sub txt ~pos:2 ~len:l in
-      let v = { expr with pexp_desc = Pexp_constant(Pconst_string(s, None)) } in
-      Some [%expr constb [%e v]] 
-    | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr ->
-      let v = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
-      Some [%expr consti (HardCaml.Utils.nbits [%e v]) [%e v]] 
+    | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
+      Some (const_mapper expr)
     (* Default *)
     | expr -> None
   end
@@ -118,6 +123,9 @@ let mapper argv =
       (* [%hw ] expression *)
       | [%expr [%hw [%e? e]]] ->
         [%expr [%e expr_mapper { mapper with expr = expr_mapper } e]]
+      (* Constant *)
+      | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
+        const_mapper expr
       (* Default mapper *)
       | _ -> default_mapper.expr mapper expr
     end;
