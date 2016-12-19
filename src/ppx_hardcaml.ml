@@ -29,17 +29,6 @@ let location_exn ~loc msg =
   |> raise
 ;;
 
-(* Helpers *)
-
-let (++) ~signed a b =
-  let hw_a = [%expr [%e a]]
-  and hw_b = [%expr [%e b]]
-  in
-  if signed=`unsigned then
-    [%expr uresize [%e hw_a] (max (width [%e hw_a]) (width [%e hw_b]))]
-  else
-    [%expr sresize [%e hw_a] (max (width [%e hw_a]) (width [%e hw_b]))]
-
 (* Expression mapper *)
 
 let check_index_format expr =
@@ -235,7 +224,7 @@ let expr_mapper ~signed m expr =
     | [%expr [%e? a] ==   [%e? b]] -> `Recurse (app [%expr (==:)] a b)
     | [%expr [%e? a] <>   [%e? b]] -> `Recurse (app [%expr (<>:)] a b)
     (* Concatenation operator *)
-    | [%expr [%e? a] @    [%e? b]] -> `Recurse [%expr a @: b]
+    | [%expr [%e? a] @    [%e? b]] -> `Recurse [%expr [%e a] @: [%e b]]
     (* Process valid signal index operator *)
     | [%expr [%e? s].[[%e? i0], [%e? i1]]] ->
       check_index_format i0;
