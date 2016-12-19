@@ -52,11 +52,11 @@ let check_index_format expr =
 (*
   rules:
     1. in [%hw ...] only allow +ve constants
-    2. in [%hws ...] leading bit always represents sign
-    3. outside [%hw{s} ...] smallest bit pattern that represents constant
+    2. in [%hw.signed ...] leading bit always represents sign
+    3. outside [%hw{.signed} ...] smallest bit pattern that represents constant
 
-     | general |  %hw | %hws
------------------------------
+     | general |  %hw | %hw.signed
+----------------------------------
 -10  | 10110   |      | 10110
  -9  | 10111   |      | 10111
  -8  |  1000   |      |  1000
@@ -180,13 +180,13 @@ let mapper argv =
       (* let%hw expression *)
       | [%expr [%hw [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
         let_binding ~signed:`unsigned bindings nexp
-      | [%expr [%hws [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
+      | [%expr [%hw.signed [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
         let_binding ~signed:`signed bindings nexp
       (* [%hw ] expression *)
       | [%expr [%hw [%e? e]]] ->
         [%expr [%e expr_mapper ~signed:`unsigned 
                      { mapper with expr = expr_mapper ~signed:`unsigned } e]]
-      | [%expr [%hws [%e? e]]] ->
+      | [%expr [%hw.signed [%e? e]]] ->
         [%expr [%e expr_mapper ~signed:`signed 
                      { mapper with expr = expr_mapper ~signed:`signed } e]]
       (* Constant *)
@@ -203,7 +203,7 @@ let mapper argv =
         [%stri let [%p mapper.pat mapper var] = 
           [%e expr_mapper ~signed:`unsigned 
                 { mapper with expr = expr_mapper ~signed:`unsigned } e0]]
-      | [%stri [%%hws let [%p? var] = [%e? e0]]] ->
+      | [%stri [%%hw.signed let [%p? var] = [%e? e0]]] ->
         [%stri let [%p mapper.pat mapper var] = 
           [%e expr_mapper ~signed:`signed 
                 { mapper with expr = expr_mapper ~signed:`signed } e0]]

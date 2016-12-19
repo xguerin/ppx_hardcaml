@@ -70,21 +70,21 @@ let multi_part_binop context =
   let a, b, c = consti 2 0, consti 2 1, consti 2 2 in
   assert_equal [%hw a + b + c] (consti 2 3)
 
-let%hws signed_mul context = 
+let%hw.signed signed_mul context = 
   assert_equal ((-3h * 3h) == (-9h)) 0b1h;
   assert_equal ((2h * 3h) == 6h) vdd;
   assert_equal ((-20h * -9h) == 180h) 0b1h
 
 let signed_comparison context = 
-  [%hws assert_equal (-2h < 0h) 0b1h];
-  [%hws assert_equal (-2h < 4h) 0b1h];
-  [%hws assert_equal (-20h < -19h) 0b1h];
-  [%hws assert_equal (-19h < -20h) 0b0h];
-  [%hws assert_equal (7h > 2h) 0b1h];
-  [%hws assert_equal (7h > 7h) 0b0h];
-  [%hws assert_equal (7h >= 7h) 0b1h];
-  [%hws assert_equal (-7h == -7h) 0b1h];
-  [%hws assert_equal (-7h <> -7h) 0b0h]
+  [%hw.signed assert_equal (-2h < 0h) 0b1h];
+  [%hw.signed assert_equal (-2h < 4h) 0b1h];
+  [%hw.signed assert_equal (-20h < -19h) 0b1h];
+  [%hw.signed assert_equal (-19h < -20h) 0b0h];
+  [%hw.signed assert_equal (7h > 2h) 0b1h];
+  [%hw.signed assert_equal (7h > 7h) 0b0h];
+  [%hw.signed assert_equal (7h >= 7h) 0b1h];
+  [%hw.signed assert_equal (-7h == -7h) 0b1h];
+  [%hw.signed assert_equal (-7h <> -7h) 0b0h]
 
 (*
  * Inline functions
@@ -153,7 +153,7 @@ let%hw unsigned_immediate_const context =
   assert_equal (  9h) (constb "1001");
   assert_equal ( 10h) (constb "1010")
 
-let%hws signed_immediate_const context = 
+let%hw.signed signed_immediate_const context = 
   assert_equal (-10h) (constb "10110");
   assert_equal ( -9h) (constb "10111");
   assert_equal ( -5h) (constb "1011");
