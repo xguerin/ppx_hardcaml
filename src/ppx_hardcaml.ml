@@ -104,60 +104,166 @@ let const_mapper ~signed = function
     consti_mapper ~loc:pexp_loc ~signed txt
   | { pexp_loc } -> location_exn ~loc:pexp_loc "Invalid constant format"
 
+let match_mapper ~loc resize sel cases = 
+  let is_catchall case =
+    let rec is_catchall_pat p = match p.ppat_desc with
+      | Ppat_any -> true
+      | _ -> false
+    in
+    case.pc_guard = None && is_catchall_pat case.pc_lhs
+  in
+
+  (* no exceptions *)
+  let exns, cases =
+    List.partition 
+      ~f:(function
+      | {pc_lhs = [%pat? exception [%p? _]]; _} -> true
+      | _ -> false) cases
+  in
+  let () = if exns <> [] then location_exn ~loc "exceptions are not supported" in
+  
+  (* must have (1) wildcard case *)
+  let wildcard,cases = List.partition ~f:is_catchall cases in
+  let default = match wildcard with [x] -> x.pc_rhs | _ -> location_exn ~loc "expecting wildcard" in
+
+  (* extract lhs of cases *)
+  let cases = 
+    List.map
+    ~f:(function
+      | { pc_lhs={ppat_desc=Ppat_constant(Pconst_integer(i, None)); _}; 
+          pc_guard=None; pc_rhs } ->
+        int_of_string i, pc_rhs 
+      | _ -> location_exn ~loc "match pattern must be an (unguarded) integer")
+    cases
+  in
+
+  (* sort the cases *)
+  let cases = List.sort ~cmp:(fun (a,_) (b,_) -> compare a b) cases in
+
+  (* check that each case is unique *)
+  let check_unique_cases cases = 
+    let module S = Set.Make(struct type t = int let compare = compare end) in
+    let add s (i,_) = S.add i s in
+    let s = List.fold_left ~f:add ~init:S.empty cases in
+    if S.cardinal s <> List.length cases then
+      location_exn ~loc "match patterns must be unique"
+  in
+  check_unique_cases cases;
+
+  (* turn cases into an [(int*signal) list] expression *)
+  let cases = List.fold_right 
+    ~f:(fun (x,y) l -> [%expr ([%e int x], [%e y]) :: [%e l]]) cases ~init:[%expr []] 
+  in
+
+  [%expr
+    (fun resize sel cases default -> (* this should be in a library *)
+
+      let resize_cases cases default = 
+        let w = List.fold_left (fun m (_,x) -> max m (width x)) (width default) cases in
+        (List.map (fun (x,y) -> x, resize y w) cases), resize default w
+      in
+
+      let out_of_range_cases sgn sel cases = 
+        let w = width sel in
+        let min,max,msk = 
+          if sgn then 
+            let w = 1 lsl (w-1) in
+            -w, w-1, (w lsl 1)-1
+          else
+            let w = 1 lsl w in
+            0, w-1, w-1
+        in
+        List.map (fun (x,y) -> x land msk, y) @@
+        List.filter (fun (x,_) -> x >= min && x <= max) cases
+      in
+
+      let rec f sel c def = 
+        match width sel, c with
+        | 0, [] -> def
+        | 0, ((0,d)::_) -> d
+        | 0, _ -> def
+        | _, [] -> def
+        | _ ->
+          let e, o = List.partition (fun (i,_) -> (i land 1) = 0) c in
+          let e, o = 
+            let shift (a,b) = a lsr 1, b in
+            List.map shift e, List.map shift o
+          in
+          let sel2 = lsb sel in
+          let sel = try msbs sel with _ -> empty in
+          mux2 sel2 (f sel o def) (f sel e def)
+      in
+
+      let sgn = (fst @@ List.hd cases) < 0 in
+      let cases,default = resize_cases cases default in
+      let cases = out_of_range_cases sgn sel cases in
+      f sel cases default)
+    [%e resize] [%e sel] [%e cases] [%e default] 
+  ] 
+
 let expr_mapper ~signed m expr =
-  let (++) = (++) ~signed in
+  let resize = if signed=`signed then [%expr sresize] else [%expr uresize] in
+  let app f a b = [%expr
+    let a,b = [%e a], [%e b] in
+    let w = max (width a) (width b) in
+    let a,b = [%e resize] a w, [%e resize] b w in
+    [%e f] a b
+  ] in
+  let mul, lt, lte, gt, gte = 
+    if signed=`signed then
+      [%expr ( *+ )], [%expr (<+)], [%expr (<=+)], [%expr (>+)], [%expr (>=+)]
+    else
+      [%expr ( *: )], [%expr (<:)], [%expr (<=:)], [%expr (>:)], [%expr (>=:)]
+  in
+
   (* Check the type of the expression *)
   begin match expr with 
     (* Bitwise operators *)
-    | [%expr [%e? a] lor  [%e? b]] -> Some [%expr [%e a ++ b] |:  [%e b ++ a]]
-    | [%expr [%e? a] land [%e? b]] -> Some [%expr [%e a ++ b] &:  [%e b ++ a]]
-    | [%expr [%e? a] lxor [%e? b]] -> Some [%expr [%e a ++ b] ^:  [%e b ++ a]]
-    | [%expr         lnot [%e? a]] -> Some [%expr             ~:  [%e      a]]
+    | [%expr [%e? a] lor  [%e? b]] -> `Recurse (app [%expr (|:)] a b)
+    | [%expr [%e? a] land [%e? b]] -> `Recurse (app [%expr (&:)] a b)
+    | [%expr [%e? a] lxor [%e? b]] -> `Recurse (app [%expr (^:)] a b)
+    | [%expr         lnot [%e? a]] -> `Recurse [%expr ~: [%e a]]
     (* Arithmetic operators *)
-    | [%expr [%e? a] +    [%e? b]] -> Some [%expr [%e a ++ b] +:  [%e b ++ a]]
-    | [%expr [%e? a] *    [%e? b]] -> Some (if signed=`signed 
-                                            then [%expr [%e a ++ b] *+  [%e b ++ a]]
-                                            else [%expr [%e a ++ b] *:  [%e b ++ a]])
-    | [%expr [%e? a] -    [%e? b]] -> Some [%expr [%e a ++ b] -:  [%e b ++ a]]
+    | [%expr [%e? a] +    [%e? b]] -> `Recurse (app [%expr (+:)] a b)
+    | [%expr [%e? a] *    [%e? b]] -> `Recurse (app mul a b)
+    | [%expr [%e? a] -    [%e? b]] -> `Recurse (app [%expr (-:)] a b)
     (* Comparison operators *)
-    | [%expr [%e? a] <    [%e? b]] -> Some (if signed=`signed 
-                                            then [%expr [%e a ++ b] <+  [%e b ++ a]]
-                                            else [%expr [%e a ++ b] <:  [%e b ++ a]])
-    | [%expr [%e? a] <=   [%e? b]] -> Some (if signed=`signed 
-                                            then [%expr [%e a ++ b] <=+  [%e b ++ a]]
-                                            else [%expr [%e a ++ b] <=:  [%e b ++ a]])
-    | [%expr [%e? a] >    [%e? b]] -> Some (if signed=`signed 
-                                            then [%expr [%e a ++ b] >+  [%e b ++ a]]
-                                            else [%expr [%e a ++ b] >:  [%e b ++ a]])
-    | [%expr [%e? a] >=   [%e? b]] -> Some (if signed=`signed 
-                                            then [%expr [%e a ++ b] >=+  [%e b ++ a]]
-                                            else [%expr [%e a ++ b] >=:  [%e b ++ a]])
-    | [%expr [%e? a] ==   [%e? b]] -> Some [%expr [%e a ++ b] ==: [%e b ++ a]]
-    | [%expr [%e? a] <>   [%e? b]] -> Some [%expr [%e a ++ b] <>: [%e b ++ a]]
+    | [%expr [%e? a] <    [%e? b]] -> `Recurse (app lt  a b)
+    | [%expr [%e? a] <=   [%e? b]] -> `Recurse (app lte a b)
+    | [%expr [%e? a] >    [%e? b]] -> `Recurse (app gt  a b)
+    | [%expr [%e? a] >=   [%e? b]] -> `Recurse (app gte a b)
+    | [%expr [%e? a] ==   [%e? b]] -> `Recurse (app [%expr (==:)] a b)
+    | [%expr [%e? a] <>   [%e? b]] -> `Recurse (app [%expr (<>:)] a b)
     (* Concatenation operator *)
-    | [%expr [%e? a] @    [%e? b]] -> Some [%expr [%e a ++ b] @:  [%e b ++ a]]
+    | [%expr [%e? a] @    [%e? b]] -> `Recurse [%expr a @: b]
     (* Process valid signal index operator *)
     | [%expr [%e? s].[[%e? i0], [%e? i1]]] ->
       check_index_format i0;
       check_index_format i1;
-      Some [%expr select [%e s] [%e i0] [%e i1]]
+      `Recurse [%expr select [%e s] [%e i0] [%e i1]]
     (* Process valid signal single bit operator *)
     | [%expr [%e? s].[[%e? i]]] ->
       check_index_format i;
-      Some [%expr bit [%e s] [%e i]]
+      `Recurse [%expr bit [%e s] [%e i]]
     (* if/then/else construct *)
     | [%expr [%hw if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
-      Some [%expr mux2 [%e cnd] [%e e0 ++ e1] [%e e1 ++ e0]]
+      `Recurse (app [%expr mux2 [%e cnd]] e0 e1)
+    (* mux *)
+    | [%expr [%hw [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
+      let sel = m.expr m sel in
+      let cases = List.map (fun c -> { c with pc_rhs = m.expr m c.pc_rhs }) cases in
+      `Return (match_mapper ~loc resize sel cases)
     (* Constant *)
     | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
-      Some (const_mapper ~signed expr)
+      `Recurse (const_mapper ~signed expr)
     (* Default *)
-    | expr -> None
+    | expr -> `Default
   end
   (* Call the proper mapper if the expression was rewritten or not *)
   |> function
-  | Some (expr) -> m.expr m expr
-  | None -> default_mapper.expr m expr
+  | `Recurse (expr) -> m.expr m expr
+  | `Return (expr) -> expr
+  | `Default -> default_mapper.expr m expr
 
 (* Top level mapper *)
 
