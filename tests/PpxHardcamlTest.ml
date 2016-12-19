@@ -70,6 +70,22 @@ let multi_part_binop context =
   let a, b, c = consti 2 0, consti 2 1, consti 2 2 in
   assert_equal [%hw a + b + c] (consti 2 3)
 
+let%hw.signed signed_mul context = 
+  assert_equal ((-3h * 3h) == (-9h)) 0b1h;
+  assert_equal ((2h * 3h) == 6h) vdd;
+  assert_equal ((-20h * -9h) == 180h) 0b1h
+
+let signed_comparison context = 
+  [%hw.signed assert_equal (-2h < 0h) 0b1h];
+  [%hw.signed assert_equal (-2h < 4h) 0b1h];
+  [%hw.signed assert_equal (-20h < -19h) 0b1h];
+  [%hw.signed assert_equal (-19h < -20h) 0b0h];
+  [%hw.signed assert_equal (7h > 2h) 0b1h];
+  [%hw.signed assert_equal (7h > 7h) 0b0h];
+  [%hw.signed assert_equal (7h >= 7h) 0b1h];
+  [%hw.signed assert_equal (-7h == -7h) 0b1h];
+  [%hw.signed assert_equal (-7h <> -7h) 0b0h]
+
 (*
  * Inline functions
  *)
@@ -116,7 +132,39 @@ let inline_ext_rec_let context =
 
 let nohw_immediate_const context =
   let z = 0b1010h in
-  assert_equal z (constb "1010")
+  assert_equal z (constb "1010");
+  assert_equal (-10h) (constb "10110");
+  assert_equal ( -9h) (constb "10111");
+  assert_equal ( -5h) (constb "1011");
+  assert_equal ( -2h) (constb "10");
+  assert_equal ( -1h) (constb "1");
+  assert_equal (  0h) (constb "0");
+  assert_equal (  1h) (constb "1");
+  assert_equal (  2h) (constb "10");
+  assert_equal (  5h) (constb "101");
+  assert_equal (  9h) (constb "1001");
+  assert_equal ( 10h) (constb "1010")
+
+let%hw unsigned_immediate_const context = 
+  assert_equal (  0h) (constb "0");
+  assert_equal (  1h) (constb "1");
+  assert_equal (  2h) (constb "10");
+  assert_equal (  5h) (constb "101");
+  assert_equal (  9h) (constb "1001");
+  assert_equal ( 10h) (constb "1010")
+
+let%hw.signed signed_immediate_const context = 
+  assert_equal (-10h) (constb "10110");
+  assert_equal ( -9h) (constb "10111");
+  assert_equal ( -5h) (constb "1011");
+  assert_equal ( -2h) (constb "10");
+  assert_equal ( -1h) (constb "1");
+  assert_equal (  0h) (constb "0");
+  assert_equal (  1h) (constb "01");
+  assert_equal (  2h) (constb "010");
+  assert_equal (  5h) (constb "0101");
+  assert_equal (  9h) (constb "01001");
+  assert_equal ( 10h) (constb "01010")
 
 let%hw immediate_const context =
   let x = 1h and y = 0xdh and z = 0b1010h in
@@ -156,10 +204,14 @@ let suite = "PpxHardcamlTest" >::: [
     "signal_int_binop"        >:: signal_int_binop;
     "auto_resize_binop"       >:: auto_resize_binop;
     "multi_part_binop"        >:: multi_part_binop;
+    "signed_mul"              >:: signed_mul;
+    "signed_comparison"              >:: signed_comparison;
     "inline_function"         >:: inline_function;
     "structural_let"          >:: structural_let;
     "inline_ext_rec_let"      >:: inline_ext_rec_let;
     "nohw_immediate_const"    >:: nohw_immediate_const;
+    "unsigned_immediate_const">:: unsigned_immediate_const;
+    "signed_immediate_const"  >:: signed_immediate_const;
     "immediate_const"         >:: immediate_const;
     "binary_immediate"        >:: binary_immediate;
     "select_const_test"       >:: select_const_test;

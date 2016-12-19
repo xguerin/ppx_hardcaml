@@ -31,11 +31,14 @@ let location_exn ~loc msg =
 
 (* Helpers *)
 
-let (++) a b =
+let (++) ~signed a b =
   let hw_a = [%expr [%e a]]
   and hw_b = [%expr [%e b]]
   in
-  [%expr uresize [%e hw_a] (max (width [%e hw_a]) (width [%e hw_b]))]
+  if signed=`unsigned then
+    [%expr uresize [%e hw_a] (max (width [%e hw_a]) (width [%e hw_b]))]
+  else
+    [%expr sresize [%e hw_a] (max (width [%e hw_a]) (width [%e hw_b]))]
 
 (* Expression mapper *)
 
@@ -46,19 +49,63 @@ let check_index_format expr =
   | Pexp_ident(_) -> ()
   | _ -> location_exn ~loc:expr.pexp_loc "Invalid signal subscript format"
 
-let const_mapper = function
+(*
+  rules:
+    1. in [%hw ...] only allow +ve constants
+    2. in [%hw.signed ...] leading bit always represents sign
+    3. outside [%hw{.signed} ...] smallest bit pattern that represents constant
+
+     | general |  %hw | %hw.signed
+----------------------------------
+-10  | 10110   |      | 10110
+ -9  | 10111   |      | 10111
+ -8  |  1000   |      |  1000
+ -7  |  1001   |      |  1001
+ -6  |  1010   |      |  1010
+ -5  |  1011   |      |  1011
+ -4  |   100   |      |   100
+ -3  |   101   |      |   101
+ -2  |    10   |      |    10
+ -1  |     1   |      |     1
+  0  |     0   |    0 |     0
+  1  |     1   |    1 |    01
+  2  |    10   |   10 |   010
+  3  |    11   |   11 |   011
+  4  |   100   |  100 |  0100
+  5  |   101   |  101 |  0101
+  6  |   110   |  110 |  0110
+  7  |   111   |  111 |  0111
+  8  |  1000   | 1000 | 01000
+  9  |  1001   | 1001 | 01001
+ 10  |  1010   | 1010 | 01010
+*)
+let consti_mapper ~loc ~signed v = 
+  let rec nbits x = match x with 0 | 1 -> 1 | x -> 1 + (nbits (x/2)) in
+  let rec sbits i = if i >= -1 then nbits (abs i) else 1 + sbits (abs (i+1)) in
+  let v = int_of_string v in
+  let nbits = 
+    match signed with
+    | `unsigned when v < 0 -> 
+      location_exn ~loc "Invalid constant format - expecting unsigned value"
+    | `signed when v > 0 -> 1 + nbits v
+    | _ when v < 0 -> sbits v
+    | _ -> nbits v
+  in
+  [%expr consti [%e int nbits] [%e int v]]
+
+let const_mapper ~signed = function
   | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr
     when String.length txt > 2 && String.sub txt ~pos:0 ~len:2 = "0b" ->
     let l = String.length txt - 2 in
     let s = String.sub txt ~pos:2 ~len:l in
     let v = { expr with pexp_desc = Pexp_constant(Pconst_string(s, None)) } in
     [%expr constb [%e v]] 
-  | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))) } as expr ->
-    let v = { expr with pexp_desc = Pexp_constant(Pconst_integer(txt, None)) } in
-    [%expr consti (HardCaml.Utils.nbits [%e v]) [%e v]] 
+  | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))); pexp_loc } ->
+    consti_mapper ~loc:pexp_loc ~signed txt
   | { pexp_loc } -> location_exn ~loc:pexp_loc "Invalid constant format"
 
-let expr_mapper m expr =
+let expr_mapper ~signed m expr =
+  let (++) = (++) ~signed in
   (* Check the type of the expression *)
   begin match expr with 
     (* Bitwise operators *)
@@ -68,13 +115,23 @@ let expr_mapper m expr =
     | [%expr         lnot [%e? a]] -> Some [%expr             ~:  [%e      a]]
     (* Arithmetic operators *)
     | [%expr [%e? a] +    [%e? b]] -> Some [%expr [%e a ++ b] +:  [%e b ++ a]]
-    | [%expr [%e? a] *    [%e? b]] -> Some [%expr [%e a ++ b] *:  [%e b ++ a]]
+    | [%expr [%e? a] *    [%e? b]] -> Some (if signed=`signed 
+                                            then [%expr [%e a ++ b] *+  [%e b ++ a]]
+                                            else [%expr [%e a ++ b] *:  [%e b ++ a]])
     | [%expr [%e? a] -    [%e? b]] -> Some [%expr [%e a ++ b] -:  [%e b ++ a]]
     (* Comparison operators *)
-    | [%expr [%e? a] <    [%e? b]] -> Some [%expr [%e a ++ b] <:  [%e b ++ a]]
-    | [%expr [%e? a] <=   [%e? b]] -> Some [%expr [%e a ++ b] <=: [%e b ++ a]]
-    | [%expr [%e? a] >    [%e? b]] -> Some [%expr [%e a ++ b] >:  [%e b ++ a]]
-    | [%expr [%e? a] >=   [%e? b]] -> Some [%expr [%e a ++ b] >=: [%e b ++ a]]
+    | [%expr [%e? a] <    [%e? b]] -> Some (if signed=`signed 
+                                            then [%expr [%e a ++ b] <+  [%e b ++ a]]
+                                            else [%expr [%e a ++ b] <:  [%e b ++ a]])
+    | [%expr [%e? a] <=   [%e? b]] -> Some (if signed=`signed 
+                                            then [%expr [%e a ++ b] <=+  [%e b ++ a]]
+                                            else [%expr [%e a ++ b] <=:  [%e b ++ a]])
+    | [%expr [%e? a] >    [%e? b]] -> Some (if signed=`signed 
+                                            then [%expr [%e a ++ b] >+  [%e b ++ a]]
+                                            else [%expr [%e a ++ b] >:  [%e b ++ a]])
+    | [%expr [%e? a] >=   [%e? b]] -> Some (if signed=`signed 
+                                            then [%expr [%e a ++ b] >=+  [%e b ++ a]]
+                                            else [%expr [%e a ++ b] >=:  [%e b ++ a]])
     | [%expr [%e? a] ==   [%e? b]] -> Some [%expr [%e a ++ b] ==: [%e b ++ a]]
     | [%expr [%e? a] <>   [%e? b]] -> Some [%expr [%e a ++ b] <>: [%e b ++ a]]
     (* Concatenation operator *)
@@ -93,7 +150,7 @@ let expr_mapper m expr =
       Some [%expr mux2 [%e cnd] [%e e0 ++ e1] [%e e1 ++ e0]]
     (* Constant *)
     | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
-      Some (const_mapper expr)
+      Some (const_mapper ~signed expr)
     (* Default *)
     | expr -> None
   end
@@ -108,24 +165,33 @@ let mapper argv =
   { default_mapper with
     (* Expression mapper *)
     expr = begin fun mapper expr ->
-      match expr with
-      (* let%hw expression *)
-      | [%expr [%hw [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
+      let let_binding ~signed bindings nexp = 
         let wb = List.map
             (fun ({ pvb_pat; pvb_expr } as binding) ->
                { binding with
                  pvb_pat = mapper.pat mapper pvb_pat;
-                 pvb_expr = expr_mapper { mapper with expr = expr_mapper } pvb_expr;
+                 pvb_expr = expr_mapper ~signed { mapper with expr = expr_mapper ~signed} pvb_expr;
                })
             bindings in
         let next = mapper.expr mapper nexp in
         { expr with pexp_desc = Pexp_let(Nonrecursive, wb, next) }
+      in
+      match expr with
+      (* let%hw expression *)
+      | [%expr [%hw [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
+        let_binding ~signed:`unsigned bindings nexp
+      | [%expr [%hw.signed [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
+        let_binding ~signed:`signed bindings nexp
       (* [%hw ] expression *)
       | [%expr [%hw [%e? e]]] ->
-        [%expr [%e expr_mapper { mapper with expr = expr_mapper } e]]
+        [%expr [%e expr_mapper ~signed:`unsigned 
+                     { mapper with expr = expr_mapper ~signed:`unsigned } e]]
+      | [%expr [%hw.signed [%e? e]]] ->
+        [%expr [%e expr_mapper ~signed:`signed 
+                     { mapper with expr = expr_mapper ~signed:`signed } e]]
       (* Constant *)
       | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
-        const_mapper expr
+        const_mapper ~signed:`smallest expr
       (* Default mapper *)
       | _ -> default_mapper.expr mapper expr
     end;
@@ -135,7 +201,12 @@ let mapper argv =
       (* [%hw let pat = <expr>] or 'let%hw pat = <expr>' *)
       | [%stri [%%hw let [%p? var] = [%e? e0]]] ->
         [%stri let [%p mapper.pat mapper var] = 
-          [%e expr_mapper { mapper with expr = expr_mapper } e0]]
+          [%e expr_mapper ~signed:`unsigned 
+                { mapper with expr = expr_mapper ~signed:`unsigned } e0]]
+      | [%stri [%%hw.signed let [%p? var] = [%e? e0]]] ->
+        [%stri let [%p mapper.pat mapper var] = 
+          [%e expr_mapper ~signed:`signed 
+                { mapper with expr = expr_mapper ~signed:`signed } e0]]
       (* Default mapper *)
       | _ -> default_mapper.structure_item mapper stri
     end
