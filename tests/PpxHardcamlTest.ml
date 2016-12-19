@@ -231,7 +231,7 @@ let suite = "PpxHardcamlTest" >::: [
     "immediate_const"         >:: immediate_const;
     "binary_immediate"        >:: binary_immediate;
     "select_const_test"       >:: select_const_test;
-  (*"simple_match"            >:: simple_match;*)
+    "simple_match"            >:: simple_match;
   ]
 
 let () = run_test_tt_main suite
