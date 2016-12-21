@@ -94,13 +94,7 @@ let const_mapper ~signed = function
   | { pexp_loc } -> location_exn ~loc:pexp_loc "Invalid constant format"
 
 let match_mapper ~loc resize sel cases = 
-  let is_catchall case =
-    let rec is_catchall_pat p = match p.ppat_desc with
-      | Ppat_any -> true
-      | _ -> false
-    in
-    case.pc_guard = None && is_catchall_pat case.pc_lhs
-  in
+  let is_catchall case = case.pc_guard = None && case.pc_lhs.ppat_desc = Ppat_any in
 
   (* no exceptions *)
   let exns, cases =
@@ -126,10 +120,7 @@ let match_mapper ~loc resize sel cases =
     cases
   in
 
-  (* sort the cases *)
-  let cases = List.sort ~cmp:(fun (a,_) (b,_) -> compare a b) cases in
-
-  (* check that each case is unique *)
+  (* check that each case is unique. note; this is also done at runtime. *)
   let check_unique_cases cases = 
     let module S = Set.Make(struct type t = int let compare = compare end) in
     let add s (i,_) = S.add i s in
@@ -144,60 +135,12 @@ let match_mapper ~loc resize sel cases =
     ~f:(fun (x,y) l -> [%expr ([%e int x], [%e y]) :: [%e l]]) cases ~init:[%expr []] 
   in
 
-  [%expr
-    (fun resize sel cases default -> (* this should be in a library *)
-
-      let resize_cases cases default = 
-        let w = List.fold_left (fun m (_,x) -> max m (width x)) (width default) cases in
-        (List.map (fun (x,y) -> x, resize y w) cases), resize default w
-      in
-
-      let out_of_range_cases sgn sel cases = 
-        let w = width sel in
-        let min,max,msk = 
-          if sgn then 
-            let w = 1 lsl (w-1) in
-            -w, w-1, (w lsl 1)-1
-          else
-            let w = 1 lsl w in
-            0, w-1, w-1
-        in
-        List.map (fun (x,y) -> x land msk, y) @@
-        List.filter (fun (x,_) -> x >= min && x <= max) cases
-      in
-
-      let rec f sel c def = 
-        match width sel, c with
-        | 0, [] -> def
-        | 0, ((0,d)::_) -> d
-        | 0, _ -> def
-        | _, [] -> def
-        | _ ->
-          let e, o = List.partition (fun (i,_) -> (i land 1) = 0) c in
-          let e, o = 
-            let shift (a,b) = a lsr 1, b in
-            List.map shift e, List.map shift o
-          in
-          let sel2 = lsb sel in
-          let sel = try msbs sel with _ -> empty in
-          mux2 sel2 (f sel o def) (f sel e def)
-      in
-
-      let sgn = (fst @@ List.hd cases) < 0 in
-      let cases,default = resize_cases cases default in
-      let cases = out_of_range_cases sgn sel cases in
-      f sel cases default)
-    [%e resize] [%e sel] [%e cases] [%e default] 
-  ] 
+  (* build muxes *)
+  [%expr matches ~resize:[%e resize] ~default:[%e default] [%e sel] [%e cases]]
 
 let expr_mapper ~signed m expr =
   let resize = if signed=`signed then [%expr sresize] else [%expr uresize] in
-  let app f a b = [%expr
-    let a,b = [%e a], [%e b] in
-    let w = max (width a) (width b) in
-    let a,b = [%e resize] a w, [%e resize] b w in
-    [%e f] a b
-  ] in
+  let app f a b = [%expr resize_op2 ~resize:[%e resize] [%e f] [%e a] [%e b]] in
   let mul, lt, lte, gt, gte = 
     if signed=`signed then
       [%expr ( *+ )], [%expr (<+)], [%expr (<=+)], [%expr (>+)], [%expr (>=+)]
