@@ -170,7 +170,7 @@ let%hw immediate_const context =
   let x = 1h and y = 0xdh and z = 0b1010h in
   let pow2 n x = x @ zero n in
   let sum = x + y + (pow2 3 (2h + z)) in
-  assert_equal sum 206h
+  assert_equal sum 110h
 
 let%hw binary_immediate context =
   let bv = 0b1010h in
@@ -192,6 +192,22 @@ let select_const_test context =
   assert_equal res 5h
 
 (*
+ * match
+ *)
+
+let%hw simple_match context = 
+  let f x = 
+    match%hw x with
+    | 1 -> 10h
+    | 7 -> 77h
+    | _ -> 100h
+  in
+  assert_equal (f 0h == 100h) 0b1h;
+  assert_equal (f 1h == 10h) 0b1h;
+  assert_equal (f 7h == 77h) 0b1h;
+  assert_equal (f 99h == 100h) 0b1h
+
+(*
  * Test suite definition
  *)
 
@@ -205,7 +221,7 @@ let suite = "PpxHardcamlTest" >::: [
     "auto_resize_binop"       >:: auto_resize_binop;
     "multi_part_binop"        >:: multi_part_binop;
     "signed_mul"              >:: signed_mul;
-    "signed_comparison"              >:: signed_comparison;
+    "signed_comparison"       >:: signed_comparison;
     "inline_function"         >:: inline_function;
     "structural_let"          >:: structural_let;
     "inline_ext_rec_let"      >:: inline_ext_rec_let;
@@ -215,6 +231,7 @@ let suite = "PpxHardcamlTest" >::: [
     "immediate_const"         >:: immediate_const;
     "binary_immediate"        >:: binary_immediate;
     "select_const_test"       >:: select_const_test;
+    "simple_match"            >:: simple_match;
   ]
 
 let () = run_test_tt_main suite
