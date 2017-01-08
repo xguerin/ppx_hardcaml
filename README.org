@@ -65,13 +65,40 @@ let%hw some_function a =
   a.[7,0]
 #+END_SRC
 
+** If expression
+
+The ~if~ operator needs to bear the ~hw~ attribute regardless of its scope:
+
+#+BEGIN_SRC ocaml
+let%hw select_const sel1 sel2 a b c d =
+  if sel1 then
+    if%hw sel2 then (a+b) else (a-b)
+  else
+    if%hw sel2 then (c+d) else (c-d)
+#+END_SRC
+
+** Match expression
+
+The ~match~ operator needs to bear the ~hw~ attribute regardless of its scope:
+
+#+BEGIN_SRC ocaml
+let%hw simple_match v = 
+  let f x = 
+    match%hw x with
+    | 1 -> 10h
+    | 7 -> 77h
+    | _ -> 100h
+  in
+  f v
+#+END_SRC
+
 * Hardware constants
 
 Hardware constants can be built using the ~h~ integer constant suffix: ~0x17h~, ~32h~, ~0b0001000h~.
 
 * Signed operations
 
-Signed operations are accessible the ~[%hw.signed]~ extension.
+Signed operations are accessible through the ~[%hw.signed]~ extension.
 
 * Implementation details
 
