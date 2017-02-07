@@ -29,15 +29,6 @@ let location_exn ~loc msg =
   |> raise
 ;;
 
-(* Expression mapper *)
-
-let check_index_format expr =
-  match expr.pexp_desc with
-  | Pexp_constant(Pconst_integer(_, _))
-  | Pexp_apply(_, _)
-  | Pexp_ident(_) -> ()
-  | _ -> location_exn ~loc:expr.pexp_loc "Invalid signal subscript format"
-
 (*
   rules:
     1. in [%hw ...] only allow +ve constants
@@ -68,13 +59,13 @@ let check_index_format expr =
   9  |  1001   | 1001 | 01001
  10  |  1010   | 1010 | 01010
 *)
-let consti_mapper ~loc ~signed v = 
+let consti_mapper ~loc ~signed v =
   let rec nbits x = match x with 0 | 1 -> 1 | x -> 1 + (nbits (x/2)) in
   let rec sbits i = if i >= -1 then nbits (abs i) else 1 + sbits (abs (i+1)) in
   let v = int_of_string v in
-  let nbits = 
+  let nbits =
     match signed with
-    | `unsigned when v < 0 -> 
+    | `unsigned when v < 0 ->
       location_exn ~loc "Invalid constant format - expecting unsigned value"
     | `signed when v > 0 -> 1 + nbits v
     | _ when v < 0 -> sbits v
@@ -88,40 +79,40 @@ let const_mapper ~signed = function
     let l = String.length txt - 2 in
     let s = String.sub txt ~pos:2 ~len:l in
     let v = { expr with pexp_desc = Pexp_constant(Pconst_string(s, None)) } in
-    [%expr constb [%e v]] 
+    [%expr constb [%e v]]
   | { pexp_desc = Pexp_constant(Pconst_integer(txt, Some('h'))); pexp_loc } ->
     consti_mapper ~loc:pexp_loc ~signed txt
   | { pexp_loc } -> location_exn ~loc:pexp_loc "Invalid constant format"
 
-let match_mapper ~loc resize sel cases = 
+let match_mapper ~loc resize sel cases =
   let is_catchall case = case.pc_guard = None && case.pc_lhs.ppat_desc = Ppat_any in
 
   (* no exceptions *)
   let exns, cases =
-    List.partition 
+    List.partition
       ~f:(function
       | {pc_lhs = [%pat? exception [%p? _]]; _} -> true
       | _ -> false) cases
   in
   let () = if exns <> [] then location_exn ~loc "exceptions are not supported" in
-  
+
   (* must have (1) wildcard case *)
   let wildcard,cases = List.partition ~f:is_catchall cases in
   let default = match wildcard with [x] -> x.pc_rhs | _ -> location_exn ~loc "expecting wildcard" in
 
   (* extract lhs of cases *)
-  let cases = 
+  let cases =
     List.map
     ~f:(function
-      | { pc_lhs={ppat_desc=Ppat_constant(Pconst_integer(i, None)); _}; 
+      | { pc_lhs={ppat_desc=Ppat_constant(Pconst_integer(i, None)); _};
           pc_guard=None; pc_rhs } ->
-        int_of_string i, pc_rhs 
+        int_of_string i, pc_rhs
       | _ -> location_exn ~loc "match pattern must be an (unguarded) integer")
     cases
   in
 
   (* check that each case is unique. note; this is also done at runtime. *)
-  let check_unique_cases cases = 
+  let check_unique_cases cases =
     let module S = Set.Make(struct type t = int let compare = compare end) in
     let add s (i,_) = S.add i s in
     let s = List.fold_left ~f:add ~init:S.empty cases in
@@ -131,8 +122,8 @@ let match_mapper ~loc resize sel cases =
   check_unique_cases cases;
 
   (* turn cases into an [(int*signal) list] expression *)
-  let cases = List.fold_right 
-    ~f:(fun (x,y) l -> [%expr ([%e int x], [%e y]) :: [%e l]]) cases ~init:[%expr []] 
+  let cases = List.fold_right
+    ~f:(fun (x,y) l -> [%expr ([%e int x], [%e y]) :: [%e l]]) cases ~init:[%expr []]
   in
 
   (* build muxes *)
@@ -141,7 +132,7 @@ let match_mapper ~loc resize sel cases =
 let expr_mapper ~signed m expr =
   let resize = if signed=`signed then [%expr sresize] else [%expr uresize] in
   let app f a b = [%expr resize_op2 ~resize:[%e resize] [%e f] [%e a] [%e b]] in
-  let mul, lt, lte, gt, gte = 
+  let mul, lt, lte, gt, gte =
     if signed=`signed then
       [%expr ( *+ )], [%expr (<+)], [%expr (<=+)], [%expr (>+)], [%expr (>=+)]
     else
@@ -149,7 +140,7 @@ let expr_mapper ~signed m expr =
   in
 
   (* Check the type of the expression *)
-  begin match expr with 
+  begin match expr with
     (* Bitwise operators *)
     | [%expr [%e? a] lor  [%e? b]] -> `Recurse (app [%expr (|:)] a b)
     | [%expr [%e? a] land [%e? b]] -> `Recurse (app [%expr (&:)] a b)
@@ -170,13 +161,12 @@ let expr_mapper ~signed m expr =
     | [%expr [%e? a] @    [%e? b]] -> `Recurse [%expr [%e a] @: [%e b]]
     (* Process valid signal index operator *)
     | [%expr [%e? s].[[%e? i0], [%e? i1]]] ->
-      check_index_format i0;
-      check_index_format i1;
-      `Recurse [%expr select [%e s] [%e i0] [%e i1]]
+      let beh = m.expr m s in
+      `Return [%expr select [%e beh] [%e i0] [%e i1]]
     (* Process valid signal single bit operator *)
     | [%expr [%e? s].[[%e? i]]] ->
-      check_index_format i;
-      `Recurse [%expr bit [%e s] [%e i]]
+      let beh = m.expr m s in
+      `Return [%expr bit [%e beh] [%e i]]
     (* if/then/else construct *)
     | [%expr [%hw if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
       `Recurse (app [%expr mux2 [%e cnd]] e0 e1)
@@ -199,11 +189,11 @@ let expr_mapper ~signed m expr =
 
 (* Top level mapper *)
 
-let mapper argv = 
+let mapper argv =
   { default_mapper with
     (* Expression mapper *)
     expr = begin fun mapper expr ->
-      let let_binding ~signed bindings nexp = 
+      let let_binding ~signed bindings nexp =
         let wb = List.map
             (fun ({ pvb_pat; pvb_expr } as binding) ->
                { binding with
@@ -222,10 +212,10 @@ let mapper argv =
         let_binding ~signed:`signed bindings nexp
       (* [%hw ] expression *)
       | [%expr [%hw [%e? e]]] ->
-        [%expr [%e expr_mapper ~signed:`unsigned 
+        [%expr [%e expr_mapper ~signed:`unsigned
                      { mapper with expr = expr_mapper ~signed:`unsigned } e]]
       | [%expr [%hw.signed [%e? e]]] ->
-        [%expr [%e expr_mapper ~signed:`signed 
+        [%expr [%e expr_mapper ~signed:`signed
                      { mapper with expr = expr_mapper ~signed:`signed } e]]
       (* Constant *)
       | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
@@ -238,12 +228,12 @@ let mapper argv =
       match stri with
       (* [%hw let pat = <expr>] or 'let%hw pat = <expr>' *)
       | [%stri [%%hw let [%p? var] = [%e? e0]]] ->
-        [%stri let [%p mapper.pat mapper var] = 
-          [%e expr_mapper ~signed:`unsigned 
+        [%stri let [%p mapper.pat mapper var] =
+          [%e expr_mapper ~signed:`unsigned
                 { mapper with expr = expr_mapper ~signed:`unsigned } e0]]
       | [%stri [%%hw.signed let [%p? var] = [%e? e0]]] ->
-        [%stri let [%p mapper.pat mapper var] = 
-          [%e expr_mapper ~signed:`signed 
+        [%stri let [%p mapper.pat mapper var] =
+          [%e expr_mapper ~signed:`signed
                 { mapper with expr = expr_mapper ~signed:`signed } e0]]
       (* Default mapper *)
       | _ -> default_mapper.structure_item mapper stri
