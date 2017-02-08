@@ -138,7 +138,6 @@ let expr_mapper ~signed m expr =
     else
       [%expr ( *: )], [%expr (<:)], [%expr (<=:)], [%expr (>:)], [%expr (>=:)]
   in
-
   (* Check the type of the expression *)
   begin match expr with
     (* Bitwise operators *)
@@ -170,6 +169,8 @@ let expr_mapper ~signed m expr =
     (* if/then/else construct *)
     | [%expr [%hw if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
       `Recurse (app [%expr mux2 [%e cnd]] e0 e1)
+    | [%expr [%hw if [%e? cnd] then [%e? e0]]] ->
+      location_exn ~loc:expr.pexp_loc "'if%hw' statement much have an 'else' clause"
     (* mux *)
     | [%expr [%hw [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
       let sel = m.expr m sel in
