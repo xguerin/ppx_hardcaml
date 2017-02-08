@@ -129,9 +129,15 @@ let match_mapper ~loc resize sel cases =
   (* build muxes *)
   [%expr matches ~resize:[%e resize] ~default:[%e default] [%e sel] [%e cases]]
 
+let resize signed =
+  if signed=`signed then [%expr sresize] else [%expr uresize]
+
+let app ~signed f a b =
+  [%expr resize_op2 ~resize:[%e resize signed] [%e f] [%e a] [%e b]]
+
 let expr_mapper ~signed m expr =
-  let resize = if signed=`signed then [%expr sresize] else [%expr uresize] in
-  let app f a b = [%expr resize_op2 ~resize:[%e resize] [%e f] [%e a] [%e b]] in
+  let app' = app ~signed in
+  let resize' = resize signed in
   let mul, lt, lte, gt, gte =
     if signed=`signed then
       [%expr ( *+ )], [%expr (<+)], [%expr (<=+)], [%expr (>+)], [%expr (>=+)]
@@ -141,21 +147,21 @@ let expr_mapper ~signed m expr =
   (* Check the type of the expression *)
   begin match expr with
     (* Bitwise operators *)
-    | [%expr [%e? a] lor  [%e? b]] -> `Recurse (app [%expr (|:)] a b)
-    | [%expr [%e? a] land [%e? b]] -> `Recurse (app [%expr (&:)] a b)
-    | [%expr [%e? a] lxor [%e? b]] -> `Recurse (app [%expr (^:)] a b)
+    | [%expr [%e? a] lor  [%e? b]] -> `Recurse (app' [%expr (|:)] a b)
+    | [%expr [%e? a] land [%e? b]] -> `Recurse (app' [%expr (&:)] a b)
+    | [%expr [%e? a] lxor [%e? b]] -> `Recurse (app' [%expr (^:)] a b)
     | [%expr         lnot [%e? a]] -> `Recurse [%expr ~: [%e a]]
     (* Arithmetic operators *)
-    | [%expr [%e? a] +    [%e? b]] -> `Recurse (app [%expr (+:)] a b)
-    | [%expr [%e? a] *    [%e? b]] -> `Recurse (app mul a b)
-    | [%expr [%e? a] -    [%e? b]] -> `Recurse (app [%expr (-:)] a b)
+    | [%expr [%e? a] +    [%e? b]] -> `Recurse (app' [%expr (+:)] a b)
+    | [%expr [%e? a] *    [%e? b]] -> `Recurse (app' mul a b)
+    | [%expr [%e? a] -    [%e? b]] -> `Recurse (app' [%expr (-:)] a b)
     (* Comparison operators *)
-    | [%expr [%e? a] <    [%e? b]] -> `Recurse (app lt  a b)
-    | [%expr [%e? a] <=   [%e? b]] -> `Recurse (app lte a b)
-    | [%expr [%e? a] >    [%e? b]] -> `Recurse (app gt  a b)
-    | [%expr [%e? a] >=   [%e? b]] -> `Recurse (app gte a b)
-    | [%expr [%e? a] ==   [%e? b]] -> `Recurse (app [%expr (==:)] a b)
-    | [%expr [%e? a] <>   [%e? b]] -> `Recurse (app [%expr (<>:)] a b)
+    | [%expr [%e? a] <    [%e? b]] -> `Recurse (app' lt  a b)
+    | [%expr [%e? a] <=   [%e? b]] -> `Recurse (app' lte a b)
+    | [%expr [%e? a] >    [%e? b]] -> `Recurse (app' gt  a b)
+    | [%expr [%e? a] >=   [%e? b]] -> `Recurse (app' gte a b)
+    | [%expr [%e? a] ==   [%e? b]] -> `Recurse (app' [%expr (==:)] a b)
+    | [%expr [%e? a] <>   [%e? b]] -> `Recurse (app' [%expr (<>:)] a b)
     (* Concatenation operator *)
     | [%expr [%e? a] @    [%e? b]] -> `Recurse [%expr [%e a] @: [%e b]]
     (* Process valid signal index operator *)
@@ -166,16 +172,45 @@ let expr_mapper ~signed m expr =
     | [%expr [%e? s].[[%e? i]]] ->
       let beh = m.expr m s in
       `Return [%expr bit [%e beh] [%e i]]
-    (* if/then/else construct *)
+    (* unsigned if/then/else construct *)
     | [%expr [%hw if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
-      `Recurse (app [%expr mux2 [%e cnd]] e0 e1)
+      if signed = `unsigned then
+        `Recurse (app' [%expr mux2 [%e cnd]] e0 e1)
+      else
+        location_exn ~loc:expr.pexp_loc "swapping from %hw.signed to %hw prohibited"
     | [%expr [%hw if [%e? cnd] then [%e? e0]]] ->
       location_exn ~loc:expr.pexp_loc "'if%hw' statement much have an 'else' clause"
-    (* mux *)
+    (* signed if/then/else construct *)
+    | [%expr [%hw.signed if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
+      if signed = `signed then
+        `Recurse (app' [%expr mux2 [%e cnd]] e0 e1)
+      else
+        location_exn ~loc:expr.pexp_loc "swapping from %hw to %hw.signed prohibited"
+    | [%expr [%hw.signed if [%e? cnd] then [%e? e0]]] ->
+      location_exn ~loc:expr.pexp_loc "'if%hw.signed' statement much have an 'else' clause"
+    (* unsigned match construct *)
     | [%expr [%hw [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
-      let sel = m.expr m sel in
-      let cases = List.map (fun c -> { c with pc_rhs = m.expr m c.pc_rhs }) cases in
-      `Return (match_mapper ~loc resize sel cases)
+      if signed = `unsigned then
+        let sel = m.expr m sel in
+        let cases = List.map (fun c -> { c with pc_rhs = m.expr m c.pc_rhs }) cases in
+        `Return (match_mapper ~loc resize' sel cases)
+      else
+        location_exn ~loc:expr.pexp_loc "swapping from %hw.signed to %hw prohibited"
+    (* signed match construct *)
+    | [%expr [%hw.signed [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
+      if signed = `signed then
+        let sel = m.expr m sel in
+        let cases = List.map (fun c -> { c with pc_rhs = m.expr m c.pc_rhs }) cases in
+        `Return (match_mapper ~loc resize' sel cases)
+      else
+        location_exn ~loc:expr.pexp_loc "swapping from %hw to %hw.signed prohibited"
+    (* [%hw ] expression *)
+    | [%expr [%hw [%e? e]]] ->
+      if signed = `unsigned then `Recurse e
+      else location_exn ~loc:expr.pexp_loc "swapping from %hw.signed to %hw prohibited"
+    | [%expr [%hw.signed [%e? e]]] ->
+      if signed = `signed then `Recurse e
+      else location_exn ~loc:expr.pexp_loc "swapping from %hw to %hw.signed prohibited"
     (* Constant *)
     | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
       `Recurse (const_mapper ~signed expr)
@@ -185,39 +220,66 @@ let expr_mapper ~signed m expr =
   (* Call the proper mapper if the expression was rewritten or not *)
   |> function
   | `Recurse (expr) -> m.expr m expr
-  | `Return (expr) -> expr
-  | `Default -> default_mapper.expr m expr
+  | `Return (expr)  -> expr
+  | `Default        -> default_mapper.expr m expr
+
+let smapper m =
+  expr_mapper ~signed:`signed { m with expr = expr_mapper ~signed:`signed }
+
+and umapper m =
+  expr_mapper ~signed:`unsigned { m with expr = expr_mapper ~signed:`unsigned }
 
 (* Top level mapper *)
+
+let let_binding ~signed mapper bindings expr nexp =
+  let wb = List.map
+      (fun ({ pvb_pat; pvb_expr } as binding) ->
+         { binding with
+           pvb_pat = mapper.pat mapper pvb_pat;
+           pvb_expr = smapper mapper pvb_expr;
+         })
+      bindings
+  and next = mapper.expr mapper nexp
+  in
+  { expr with pexp_desc = Pexp_let(Nonrecursive, wb, next) }
 
 let mapper argv =
   { default_mapper with
     (* Expression mapper *)
     expr = begin fun mapper expr ->
-      let let_binding ~signed bindings nexp =
-        let wb = List.map
-            (fun ({ pvb_pat; pvb_expr } as binding) ->
-               { binding with
-                 pvb_pat = mapper.pat mapper pvb_pat;
-                 pvb_expr = expr_mapper ~signed { mapper with expr = expr_mapper ~signed} pvb_expr;
-               })
-            bindings in
-        let next = mapper.expr mapper nexp in
-        { expr with pexp_desc = Pexp_let(Nonrecursive, wb, next) }
-      in
       match expr with
       (* let%hw expression *)
       | [%expr [%hw [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
-        let_binding ~signed:`unsigned bindings nexp
+        let_binding ~signed:`unsigned mapper bindings expr nexp
       | [%expr [%hw.signed [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
-        let_binding ~signed:`signed bindings nexp
+        let_binding ~signed:`signed mapper bindings expr nexp
+      (* unsigned if/then/else construct *)
+      | [%expr [%hw if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
+        let e = app ~signed:`unsigned [%expr mux2 [%e cnd]] e0 e1 in
+        [%expr [%e umapper mapper e]]
+      | [%expr [%hw if [%e? cnd] then [%e? e0]]] ->
+        location_exn ~loc:expr.pexp_loc "'if%hw' statement much have an 'else' clause"
+      (* signed if/then/else construct *)
+      | [%expr [%hw.signed if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
+        let e = app ~signed:`signed [%expr mux2 [%e cnd]] e0 e1 in
+        [%expr [%e smapper mapper e]]
+      | [%expr [%hw.signed if [%e? cnd] then [%e? e0]]] ->
+        location_exn ~loc:expr.pexp_loc "'if%hw.signed' statement much have an 'else' clause"
+      (* unsigned match construct *)
+      | [%expr [%hw [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
+        let sel = umapper mapper sel in
+        let cases = List.map (fun c -> { c with pc_rhs = umapper mapper c.pc_rhs }) cases
+        in
+        umapper mapper (match_mapper ~loc (resize `unsigned) sel cases)
+      (* signed match construct *)
+      | [%expr [%hw.signed [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
+        let sel = smapper mapper sel in
+        let cases = List.map (fun c -> { c with pc_rhs = smapper mapper c.pc_rhs }) cases
+        in
+        smapper mapper (match_mapper ~loc (resize `signed) sel cases)
       (* [%hw ] expression *)
-      | [%expr [%hw [%e? e]]] ->
-        [%expr [%e expr_mapper ~signed:`unsigned
-                     { mapper with expr = expr_mapper ~signed:`unsigned } e]]
-      | [%expr [%hw.signed [%e? e]]] ->
-        [%expr [%e expr_mapper ~signed:`signed
-                     { mapper with expr = expr_mapper ~signed:`signed } e]]
+      | [%expr [%hw [%e? e]]] -> [%expr [%e umapper mapper e]]
+      | [%expr [%hw.signed [%e? e]]] -> [%expr [%e smapper mapper e]]
       (* Constant *)
       | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
         const_mapper ~signed:`smallest expr
@@ -229,13 +291,9 @@ let mapper argv =
       match stri with
       (* [%hw let pat = <expr>] or 'let%hw pat = <expr>' *)
       | [%stri [%%hw let [%p? var] = [%e? e0]]] ->
-        [%stri let [%p mapper.pat mapper var] =
-          [%e expr_mapper ~signed:`unsigned
-                { mapper with expr = expr_mapper ~signed:`unsigned } e0]]
+        [%stri let [%p mapper.pat mapper var] = [%e umapper mapper e0]]
       | [%stri [%%hw.signed let [%p? var] = [%e? e0]]] ->
-        [%stri let [%p mapper.pat mapper var] =
-          [%e expr_mapper ~signed:`signed
-                { mapper with expr = expr_mapper ~signed:`signed } e0]]
+        [%stri let [%p mapper.pat mapper var] = [%e smapper mapper e0]]
       (* Default mapper *)
       | _ -> default_mapper.structure_item mapper stri
     end
