@@ -1,7 +1,0 @@
-PKG compiler-libs.common ppx_tools.metaquot ppx_core ppx_driver oUnit hardcaml
-
-S src
-S tests
-
-B _build/src
-B _build/tests

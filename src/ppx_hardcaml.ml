@@ -14,8 +14,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Migrate_parsetree
+open Ast_403
+
 open Ast_mapper
-open Ast_convenience
+open Ast_convenience_403
 open Asttypes
 open StdLabels
 open Longident
@@ -243,60 +246,61 @@ let let_binding ~signed mapper bindings expr nexp =
   in
   { expr with pexp_desc = Pexp_let(Nonrecursive, wb, next) }
 
-let mapper argv =
-  { default_mapper with
-    (* Expression mapper *)
-    expr = begin fun mapper expr ->
-      match expr with
-      (* let%hw expression *)
-      | [%expr [%hw [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
-        let_binding ~signed:`unsigned mapper bindings expr nexp
-      | [%expr [%hw.signed [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
-        let_binding ~signed:`signed mapper bindings expr nexp
-      (* unsigned if/then/else construct *)
-      | [%expr [%hw if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
-        let e = app ~signed:`unsigned [%expr mux2 [%e cnd]] e0 e1 in
-        [%expr [%e umapper mapper e]]
-      | [%expr [%hw if [%e? cnd] then [%e? e0]]] ->
-        location_exn ~loc:expr.pexp_loc "'if%hw' statement much have an 'else' clause"
-      (* signed if/then/else construct *)
-      | [%expr [%hw.signed if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
-        let e = app ~signed:`signed [%expr mux2 [%e cnd]] e0 e1 in
-        [%expr [%e smapper mapper e]]
-      | [%expr [%hw.signed if [%e? cnd] then [%e? e0]]] ->
-        location_exn ~loc:expr.pexp_loc "'if%hw.signed' statement much have an 'else' clause"
-      (* unsigned match construct *)
-      | [%expr [%hw [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
-        let sel = umapper mapper sel in
-        let cases = List.map (fun c -> { c with pc_rhs = umapper mapper c.pc_rhs }) cases
-        in
-        umapper mapper (match_mapper ~loc (resize `unsigned) sel cases)
-      (* signed match construct *)
-      | [%expr [%hw.signed [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
-        let sel = smapper mapper sel in
-        let cases = List.map (fun c -> { c with pc_rhs = smapper mapper c.pc_rhs }) cases
-        in
-        smapper mapper (match_mapper ~loc (resize `signed) sel cases)
-      (* [%hw ] expression *)
-      | [%expr [%hw [%e? e]]] -> [%expr [%e umapper mapper e]]
-      | [%expr [%hw.signed [%e? e]]] -> [%expr [%e smapper mapper e]]
-      (* Constant *)
-      | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
-        const_mapper ~signed:`smallest expr
-      (* Default mapper *)
-      | _ -> default_mapper.expr mapper expr
-    end;
-    (* Structure item mapper *)
-    structure_item = begin fun mapper stri ->
-      match stri with
-      (* [%hw let pat = <expr>] or 'let%hw pat = <expr>' *)
-      | [%stri [%%hw let [%p? var] = [%e? e0]]] ->
-        [%stri let [%p mapper.pat mapper var] = [%e umapper mapper e0]]
-      | [%stri [%%hw.signed let [%p? var] = [%e? e0]]] ->
-        [%stri let [%p mapper.pat mapper var] = [%e smapper mapper e0]]
-      (* Default mapper *)
-      | _ -> default_mapper.structure_item mapper stri
-    end
-  }
+let expr_mapper config mapper expr =
+  match expr with
+  (* let%hw expression *)
+  | [%expr [%hw [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
+    let_binding ~signed:`unsigned mapper bindings expr nexp
+  | [%expr [%hw.signed [%e? { pexp_desc = Pexp_let(Nonrecursive, bindings, nexp) } ]]] ->
+    let_binding ~signed:`signed mapper bindings expr nexp
+  (* unsigned if/then/else construct *)
+  | [%expr [%hw if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
+    let e = app ~signed:`unsigned [%expr mux2 [%e cnd]] e0 e1 in
+    [%expr [%e umapper mapper e]]
+  | [%expr [%hw if [%e? cnd] then [%e? e0]]] ->
+    location_exn ~loc:expr.pexp_loc "'if%hw' statement much have an 'else' clause"
+  (* signed if/then/else construct *)
+  | [%expr [%hw.signed if [%e? cnd] then [%e? e0] else [%e? e1]]] ->
+    let e = app ~signed:`signed [%expr mux2 [%e cnd]] e0 e1 in
+    [%expr [%e smapper mapper e]]
+  | [%expr [%hw.signed if [%e? cnd] then [%e? e0]]] ->
+    location_exn ~loc:expr.pexp_loc "'if%hw.signed' statement much have an 'else' clause"
+  (* unsigned match construct *)
+  | [%expr [%hw [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
+    let sel = umapper mapper sel in
+    let cases = List.map (fun c -> { c with pc_rhs = umapper mapper c.pc_rhs }) cases
+    in
+    umapper mapper (match_mapper ~loc (resize `unsigned) sel cases)
+  (* signed match construct *)
+  | [%expr [%hw.signed [%e? { pexp_desc=Pexp_match(sel, cases); pexp_loc=loc }]]] ->
+    let sel = smapper mapper sel in
+    let cases = List.map (fun c -> { c with pc_rhs = smapper mapper c.pc_rhs }) cases
+    in
+    smapper mapper (match_mapper ~loc (resize `signed) sel cases)
+  (* [%hw ] expression *)
+  | [%expr [%hw [%e? e]]] -> [%expr [%e umapper mapper e]]
+  | [%expr [%hw.signed [%e? e]]] -> [%expr [%e smapper mapper e]]
+  (* Constant *)
+  | { pexp_desc = Pexp_constant(Pconst_integer(_, Some('h'))) } ->
+    const_mapper ~signed:`smallest expr
+  (* Default mapper *)
+  | _ -> default_mapper.expr mapper expr
 
-let () = register "hw" mapper
+let structure_item_mapper config mapper stri =
+  match stri with
+  (* [%hw let pat = <expr>] or 'let%hw pat = <expr>' *)
+  | [%stri [%%hw let [%p? var] = [%e? e0]]] ->
+    [%stri let [%p mapper.pat mapper var] = [%e umapper mapper e0]]
+  | [%stri [%%hw.signed let [%p? var] = [%e? e0]]] ->
+    [%stri let [%p mapper.pat mapper var] = [%e smapper mapper e0]]
+  | _ -> default_mapper.structure_item mapper stri
+
+let rewriter config cookies = {
+  Ast_mapper.default_mapper with
+  expr = expr_mapper config;
+  structure_item = structure_item_mapper config
+}
+
+let () =
+  Driver.register ~name:"ppx_hardcaml" ~args:[] Versions.ocaml_403 rewriter
+;;

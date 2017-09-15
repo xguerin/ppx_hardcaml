@@ -5,6 +5,7 @@
 *.cmx
 *.install
 *.log
+*.merlin
 *.mldylib
 *.mllib
 *.native
