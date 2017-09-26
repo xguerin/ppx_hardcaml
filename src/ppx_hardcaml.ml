@@ -15,10 +15,10 @@
  *)
 
 open Migrate_parsetree
-open Ast_403
+open Ast_404
 
 open Ast_mapper
-open Ast_convenience_403
+open Ast_convenience_404
 open Asttypes
 open StdLabels
 open Longident
@@ -302,5 +302,5 @@ let rewriter config cookies = {
 }
 
 let () =
-  Driver.register ~name:"ppx_hardcaml" ~args:[] Versions.ocaml_403 rewriter
+  Driver.register ~name:"ppx_hardcaml" ~args:[] Versions.ocaml_404 rewriter
 ;;
